@@ -3,6 +3,7 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 import os
+import base64
 import openpyxl
 
 # ==========================================
@@ -15,53 +16,56 @@ st.set_page_config(page_title="Movimentações - Headcount", layout="wide", init
 # ==========================================
 st.markdown("""
 <style>
-/* 1. Protege o topo para não cortar o cabeçalho, mas reduz embaixo para caber na tela */
+/* 1. Margem de segurança para NÃO CORTAR O CABEÇALHO, mas ainda assim aproveitar o espaço */
 .block-container {
-    padding-top: 3rem !important; 
-    padding-bottom: 1rem !important;
-    max-width: 98% !important;
+    padding-top: 3.5rem !important; 
+    padding-bottom: 2rem !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
 }
 
-/* 2. Aproxima os campos de texto para a caixa não ficar gigantesca (Evita barra de rolagem) */
+/* 2. Reduz os buracos entre as caixas para a tela não ficar gigante */
 div[data-testid="stVerticalBlock"] {
-    gap: 0.1rem !important;
+    gap: 0.2rem !important;
 }
 
-/* 3. PINTA CAIXA DE SAÍDA: Fundo Vermelho Pastel */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(#bg-saida) {
+/* 3. CAIXA SAÍDA (VERMELHO PASTEL): Usa o marcador invisível para achar o retângulo certo */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.box-saida-marker) {
     background-color: #fff5f5 !important;
     border: 2px solid #ffcdd2 !important;
-    border-radius: 15px !important;
+    border-radius: 12px !important;
 }
 
-/* 4. PINTA CAIXA DE ENTRADA: Fundo Verde Pastel */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(#bg-entrada) {
+/* 4. CAIXA ENTRADA (VERDE PASTEL): Usa o marcador invisível para achar o retângulo certo */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.box-entrada-marker) {
     background-color: #f1f8e9 !important;
     border: 2px solid #c8e6c9 !important;
-    border-radius: 15px !important;
+    border-radius: 12px !important;
 }
 
-/* 5. Pinta o Botão "Confirmar Movimentação" de Verde */
-button[kind="primary"] {
+/* 5. BOTÃO VERDE (Confirmar Movimentação) */
+div[data-testid="element-container"]:has(.btn-confirmar-marker) + div[data-testid="element-container"] button {
     background-color: #2e7d32 !important;
     border-color: #2e7d32 !important;
     color: white !important;
     font-weight: bold !important;
     padding: 0.75rem !important;
 }
-button[kind="primary"]:hover {
+div[data-testid="element-container"]:has(.btn-confirmar-marker) + div[data-testid="element-container"] button:hover {
     background-color: #1b5e20 !important;
+    border-color: #1b5e20 !important;
 }
 
-/* 6. Pinta o Botão "Faltou posto" de Laranja para destacar */
-div:has(#btn-posto) button {
+/* 6. BOTÃO LARANJA (Posto Faltante) */
+div[data-testid="element-container"]:has(.btn-posto-marker) + div[data-testid="element-container"] button {
     background-color: #ff9800 !important;
     border-color: #ff9800 !important;
     color: white !important;
     font-weight: bold !important;
 }
-div:has(#btn-posto) button:hover {
+div[data-testid="element-container"]:has(.btn-posto-marker) + div[data-testid="element-container"] button:hover {
     background-color: #f57c00 !important;
+    border-color: #f57c00 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -92,7 +96,7 @@ def conectar_banco():
     return conn
 
 # ==========================================
-# 3. LER EXCEL (COM CACHE)
+# 3. LER EXCEL (COM CACHE) E RENDERIZAR IMAGEM
 # ==========================================
 @st.cache_data
 def carregar_dados_excel():
@@ -112,6 +116,17 @@ def carregar_dados_excel():
         return pd.DataFrame(columns=['unidade', 'cc', 'sub', 'gestor', 'posto', 'cargo', 'requisitante'])
 
 df_parametros = carregar_dados_excel()
+
+# Função segura para renderizar a Logo no centro
+def renderizar_logo(tamanho=180):
+    if os.path.exists("logo.png"):
+        with open("logo.png", "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode()
+            st.markdown(f'''
+                <div style="display: flex; justify-content: center; margin-bottom: 10px;">
+                    <img src="data:image/png;base64,{encoded_string}" width="{tamanho}">
+                </div>
+            ''', unsafe_allow_html=True)
 
 # ==========================================
 # 4. CONTROLE DE SESSÃO
@@ -145,8 +160,7 @@ def modal_solicitar_posto():
     
     cargo_p = st.selectbox("Qual Cargo deve pertencer a esse posto?:", sorted([x for x in df_parametros['cargo'].unique() if x]), key="p_cargo")
 
-    # Botão de envio
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.write("")
     if st.button("ENVIAR SOLICITAÇÃO", type="primary", use_container_width=True):
         arquivo_solicitacoes = "solicitacoes_postos.xlsx"
         try:
@@ -176,16 +190,13 @@ def modal_solicitar_posto():
 if st.session_state.usuario_logado is None:
     st.write("<br><br>", unsafe_allow_html=True)
     
-    # Ajuste para a logo não cortar (Colunas proporcionais)
-    col1, col2, col3 = st.columns([1.2, 1, 1.2])
+    # Aumentei as proporções laterais para a caixa central ficar do tamanho ideal
+    col1, col2, col3 = st.columns([1.5, 1.2, 1.5]) 
     with col2:
         with st.container(border=True):
             st.write("<br>", unsafe_allow_html=True)
-            # Imagem no centro exato (sem forçar corte)
-            try:
-                st.image("logo.png") 
-            except:
-                pass
+            
+            renderizar_logo(180) # Chamada segura para exibir a logo sem cortes
                 
             st.markdown("<h3 style='text-align: center; color: #333333;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
             
@@ -205,13 +216,14 @@ if st.session_state.usuario_logado is None:
 
 # --- TELAS INTERNAS ---
 else:
-    # Cabeçalho Superior Alinhado
+    # Cabeçalho Superior Seguro e Limpo
     col_titulo, col_user, col_btn1, col_btn2 = st.columns([4, 2.5, 2, 1])
     with col_titulo:
-        st.markdown("<h3 style='margin-top: -10px;'>Sistema de Movimentações</h3>", unsafe_allow_html=True)
+        st.markdown("### Sistema de Movimentações")
     with col_user:
-        st.write(f"👤 **Logado como:** {st.session_state.usuario_logado}")
+        st.write(f"<br>👤 **Logado como:** {st.session_state.usuario_logado}", unsafe_allow_html=True)
     with col_btn1:
+        st.write("<br>", unsafe_allow_html=True)
         if st.session_state.pagina == 'registro':
             if st.button("Ver Histórico (Consultas)", use_container_width=True):
                 st.session_state.pagina = 'consulta'
@@ -221,6 +233,7 @@ else:
                 st.session_state.pagina = 'registro'
                 st.rerun()
     with col_btn2:
+        st.write("<br>", unsafe_allow_html=True)
         if st.button("Sair", use_container_width=True):
             fazer_logout()
             st.rerun()
@@ -231,21 +244,21 @@ else:
     if st.session_state.pagina == 'registro':
         
         lista_req = sorted([x for x in df_parametros['requisitante'].unique() if x])
-        requisitante = st.selectbox("Quem solicitou a troca?", options=[""] + lista_req)
+        requisitante = st.selectbox("Quem solicitou a troca? (Pode digitar para pesquisar)", options=[""] + lista_req)
 
         st.write("") 
 
-        # Divisão das Caixas
+        # Divisão da Tela: Metade Esquerda (Saída) / Metade Direita (Entrada)
         col_saida, col_entrada = st.columns(2, gap="medium")
 
         # ==== LADO ESQUERDO: SAÍDA ====
         with col_saida:
             with st.container(border=True):
-                # O marcador invisível que avisa o CSS para pintar esta caixa
-                st.markdown("<div id='bg-saida'></div>", unsafe_allow_html=True)
+                # Marcador 1: Diz pro CSS pintar essa caixa de VERMELHO PASTEL
+                st.markdown("<div class='box-saida-marker'></div>", unsafe_allow_html=True)
                 st.markdown("<h4 style='text-align: center; color: #c62828;'>VAGA DE SAÍDA (RETIRADA)</h4>", unsafe_allow_html=True)
                 
-                # Campos um embaixo do outro
+                # Caixas em cascata (Uma embaixo da outra conforme solicitado)
                 s_und = st.selectbox("Unidade (Saída):", options=[""] + sorted([x for x in df_parametros['unidade'].unique() if x]))
                 df_s_cc = df_parametros[df_parametros['unidade'] == s_und] if s_und else df_parametros
                 
@@ -268,11 +281,11 @@ else:
         # ==== LADO DIREITO: ENTRADA ====
         with col_entrada:
             with st.container(border=True):
-                # O marcador invisível que avisa o CSS para pintar esta caixa
-                st.markdown("<div id='bg-entrada'></div>", unsafe_allow_html=True)
+                # Marcador 2: Diz pro CSS pintar essa caixa de VERDE PASTEL
+                st.markdown("<div class='box-entrada-marker'></div>", unsafe_allow_html=True)
                 st.markdown("<h4 style='text-align: center; color: #2e7d32;'>VAGA DE ENTRADA (NOVA)</h4>", unsafe_allow_html=True)
                 
-                # Campos um embaixo do outro
+                # Caixas em cascata
                 e_und = st.selectbox("Unidade (Entrada):", options=[""] + sorted([x for x in df_parametros['unidade'].unique() if x]))
                 df_e_cc = df_parametros[df_parametros['unidade'] == e_und] if e_und else df_parametros
                 
@@ -292,15 +305,17 @@ else:
                 
                 e_qtd = st.number_input("Quantidade (Entrada):", min_value=1, value=1, step=1)
                 
-                # Botão Faltou Posto (Laranja)
-                st.markdown("<div id='btn-posto'></div>", unsafe_allow_html=True)
+                # Marcador 3: Diz pro CSS pintar o botão Faltou Posto de LARANJA
+                st.write("")
+                st.markdown("<div class='btn-posto-marker'></div>", unsafe_allow_html=True)
                 if st.button("Não encontrou o posto? Clique aqui!", use_container_width=True):
                     modal_solicitar_posto()
 
         st.write("")
         
-        # ==== BOTÃO SALVAR (Verde Primário) ====
-        if st.button("CONFIRMAR MOVIMENTAÇÃO", type="primary", use_container_width=True):
+        # Marcador 4: Diz pro CSS pintar o botão Salvar de VERDE
+        st.markdown("<div class='btn-confirmar-marker'></div>", unsafe_allow_html=True)
+        if st.button("CONFIRMAR MOVIMENTAÇÃO", use_container_width=True):
             if not requisitante:
                 st.warning("O campo Requisitante é obrigatório.")
             elif not all([s_und, s_cc, s_sub, s_gestor, s_posto, s_cargo, e_und, e_cc, e_sub, e_gestor, e_posto, e_cargo]):
@@ -335,7 +350,7 @@ else:
     # --- TELA DE CONSULTA ---
     elif st.session_state.pagina == 'consulta':
         conn = conectar_banco()
-        # Incluindo CC_Saida e CC_Entrada
+        # SELEÇÃO ATUALIZADA com CC Saída e CC Entrada
         df_historico = pd.read_sql_query(f'''
             SELECT id, data_registro, requisitante, 
                    cc_saida, qtd_saida, cargo_saida, 
