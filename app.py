@@ -129,7 +129,7 @@ if 'pagina' not in st.session_state:
 if 'sucesso_movimentacao' not in st.session_state:
     st.session_state.sucesso_movimentacao = False
 if 'form_key' not in st.session_state:
-    st.session_state.form_key = 0 # Variável mágica para forçar a limpeza dos campos
+    st.session_state.form_key = 0 
 
 def fazer_logout():
     st.session_state.usuario_logado = None
@@ -195,7 +195,6 @@ if st.session_state.usuario_logado is None:
             st.markdown("<h3 style='text-align: center; color: black;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
             st.write("<br>", unsafe_allow_html=True)
             
-            # USO DO ST.FORM PARA PERMITIR A TECLA ENTER
             with st.form("form_login", clear_on_submit=False):
                 usuario = st.text_input("Usuário")
                 senha = st.text_input("Senha", type="password")
@@ -238,12 +237,10 @@ else:
     # --- TELA PRINCIPAL (REGISTRO) ---
     if st.session_state.pagina == 'registro':
         
-        # MENSAGEM DE SUCESSO (Fica no topo após recarregar a tela)
         if st.session_state.sucesso_movimentacao:
             st.success("✅ Movimentação registrada com sucesso!")
             st.session_state.sucesso_movimentacao = False 
         
-        # Chave dinâmica para forçar a limpeza dos campos
         fk = st.session_state.form_key 
         
         lista_req = sorted([x for x in df_parametros['requisitante'].unique() if x])
@@ -255,7 +252,6 @@ else:
         # ==== LADO ESQUERDO: SAÍDA ====
         with col_saida:
             with st.container(border=True):
-                # TÍTULO COM FUNDO PASTEL
                 st.markdown("""
                 <div style="background-color: #fff5f5; border: 2px solid #ffcdd2; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
                     <h4 style="text-align: center; color: #b71c1c; margin: 0;">VAGA DE SAÍDA (RETIRADA)</h4>
@@ -283,7 +279,6 @@ else:
         # ==== LADO DIREITO: ENTRADA ====
         with col_entrada:
             with st.container(border=True):
-                # TÍTULO COM FUNDO PASTEL
                 st.markdown("""
                 <div style="background-color: #f1f8e9; border: 2px solid #c8e6c9; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
                     <h4 style="text-align: center; color: #1b5e20; margin: 0;">VAGA DE ENTRADA (NOVA)</h4>
@@ -346,7 +341,6 @@ else:
 
                 conn.close()
                 
-                # Seta a mensagem de sucesso e muda a chave para resetar os campos instantaneamente!
                 st.session_state.sucesso_movimentacao = True
                 st.session_state.form_key += 1 
                 st.rerun()
@@ -354,8 +348,10 @@ else:
     # --- TELA DE CONSULTA ---
     elif st.session_state.pagina == 'consulta':
         conn = conectar_banco()
+        
+        # AQUI FOI ADICIONADO O "usuario_sistema" (O Admin logado) NA CONSULTA
         df_historico = pd.read_sql_query(f'''
-            SELECT id, data_registro, requisitante, 
+            SELECT id, data_registro, usuario_sistema, requisitante, 
                    cc_saida, qtd_saida, cargo_saida, 
                    cc_entrada, qtd_entrada, cargo_entrada 
             FROM movimentacoes 
@@ -364,7 +360,8 @@ else:
         ''', conn)
         conn.close()
         
-        df_historico.columns = ["ID", "Data", "Requisitante", "CC Saída", "Qtd Saída", "Cargo Saída", "CC Entrada", "Qtd Entrada", "Cargo Entrada"]
+        # O nome da coluna "usuario_sistema" foi renomeado para "Usuário" para ficar bonito na tela
+        df_historico.columns = ["ID", "Data", "Usuário", "Requisitante", "CC Saída", "Qtd Saída", "Cargo Saída", "CC Entrada", "Qtd Entrada", "Cargo Entrada"]
 
         total = len(df_historico)
         ultima = df_historico['Data'].iloc[0] if total > 0 else "-"
@@ -375,7 +372,6 @@ else:
 
         st.markdown("#### Suas Movimentações Cadastradas")
         
-        # Pinta a tabela de forma organizada
         def colorir_tabela(coluna):
             if coluna.name in ["CC Saída", "Qtd Saída", "Cargo Saída"]:
                 return ['background-color: #ffebee; color: #b71c1c'] * len(coluna)
