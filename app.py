@@ -1,37 +1,97 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import os
 import openpyxl
 import base64
 import time
 
 # ==========================================
-# 1. CONFIGURAÇÕES DA PÁGINA (Tema Global)
+# 1. CONFIGURAÇÕES DA PÁGINA
 # ==========================================
 st.set_page_config(page_title="Movimentações - Headcount", layout="wide", initial_sidebar_state="collapsed")
 
-# CSS Básico e Seguro (Apenas para esconder a barra superior e ajustar margens)
-st.markdown("""
-<style>
-/* Esconde a barra branca inútil do topo do Streamlit */
-[data-testid="stHeader"] {
-    display: none !important;
+# ==========================================
+# 2. FUSO HORÁRIO (CORREÇÃO DE HORA DO BRASIL)
+# ==========================================
+# O Streamlit Cloud usa horário UTC (Londres). Isso força o horário de Brasília.
+fuso_br = timezone(timedelta(hours=-3))
+
+# ==========================================
+# 3. O MOTOR JAVASCRIPT (Cores e Botões)
+# ==========================================
+js_code = """
+<script>
+const parentDoc = window.parent.document;
+
+function aplicarEstilos() {
+    // 1. Ocultar a barra superior do Streamlit
+    const header = parentDoc.querySelector('header');
+    if(header) header.style.display = 'none';
+
+    // 2. Ajuste de tela (Sem rolagem excessiva)
+    const mainBlock = parentDoc.querySelector('.block-container');
+    if(mainBlock) {
+        mainBlock.style.paddingTop = '1.5rem';
+        mainBlock.style.paddingBottom = '1rem';
+        mainBlock.style.maxWidth = '98%';
+    }
+
+    // 3. Deixar os campos em cascata mais juntos
+    const blocos = parentDoc.querySelectorAll('div[data-testid="stVerticalBlock"]');
+    blocos.forEach(b => b.style.gap = '0.1rem');
+
+    // 4. PINTAR OS BOTÕES EXATAMENTE COMO SOLICITADO
+    const botoes = parentDoc.querySelectorAll('button');
+    botoes.forEach(btn => {
+        const txt = btn.innerText.trim();
+        
+        if(txt === '✅ CONFIRMAR MOVIMENTAÇÃO') {
+            btn.style.backgroundColor = '#2e7d32'; // Verde
+            btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
+        } 
+        else if(txt === 'Ver Histórico (Consultas)' || txt === 'Nova Movimentação' || txt === 'ACESSAR SISTEMA' || txt === 'ENVIAR SOLICITAÇÃO') {
+            btn.style.backgroundColor = '#1976d2'; // Azul
+            btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
+        } 
+        else if(txt === 'Sair') {
+            btn.style.backgroundColor = '#d32f2f'; // Vermelho
+            btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
+        } 
+        else if(txt.includes('Não encontrou o posto?')) {
+            btn.style.backgroundColor = '#ff9800'; // Laranja
+            btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
+        }
+    });
+
+    // 5. PINTAR OS RETÂNGULOS (Vermelho e Verde Pastel)
+    const titulos = parentDoc.querySelectorAll('h4');
+    titulos.forEach(h => {
+        if(h.innerText.includes('VAGA DE SAÍDA')) {
+            const caixa = h.closest('div[data-testid="stVerticalBlockBorderWrapper"]');
+            if(caixa) {
+                caixa.style.backgroundColor = '#fff5f5';
+                caixa.style.border = '2px solid #ffcdd2';
+            }
+        } else if(h.innerText.includes('VAGA DE ENTRADA')) {
+            const caixa = h.closest('div[data-testid="stVerticalBlockBorderWrapper"]');
+            if(caixa) {
+                caixa.style.backgroundColor = '#f1f8e9';
+                caixa.style.border = '2px solid #c8e6c9';
+            }
+        }
+    });
 }
-/* Tira o excesso de espaço em branco para não precisar rolar a tela */
-.block-container {
-    padding-top: 2rem !important;
-    padding-bottom: 1rem !important;
-    padding-left: 3rem !important;
-    padding-right: 3rem !important;
-}
-/* Aproxima os campos de texto */
-div[data-testid="stVerticalBlock"] {
-    gap: 0.2rem !important;
-}
-</style>
-""", unsafe_allow_html=True)
+
+// Executa e vigia a tela
+aplicarEstilos();
+const observer = new MutationObserver(aplicarEstilos);
+observer.observe(parentDoc.body, { childList: true, subtree: true });
+</script>
+"""
+components.html(js_code, height=0, width=0)
 
 USUARIOS_PERMITIDOS = {
     "admin": "admin123",
@@ -40,7 +100,7 @@ USUARIOS_PERMITIDOS = {
 }
 
 # ==========================================
-# 2. BANCO DE DADOS
+# 4. BANCO DE DADOS E EXCEL
 # ==========================================
 def conectar_banco():
     conn = sqlite3.connect('headcount_v3.db')
@@ -58,20 +118,15 @@ def conectar_banco():
     conn.commit()
     return conn
 
-# ==========================================
-# 3. LER EXCEL
-# ==========================================
 @st.cache_data
 def carregar_dados_excel():
     arquivo_excel = 'parametros.xlsx'
     if not os.path.exists(arquivo_excel):
         return pd.DataFrame(columns=['unidade', 'cc', 'sub', 'gestor', 'posto', 'cargo', 'requisitante'])
     try:
-        df = pd.read_excel(arquivo_excel, dtype=str)
-        df = df.iloc[:, :7]
+        df = pd.read_excel(arquivo_excel, dtype=str).iloc[:, :7]
         df.columns = ['unidade', 'cc', 'sub', 'gestor', 'posto', 'cargo', 'requisitante']
-        df = df.fillna("") 
-        return df
+        return df.fillna("") 
     except:
         return pd.DataFrame(columns=['unidade', 'cc', 'sub', 'gestor', 'posto', 'cargo', 'requisitante'])
 
@@ -79,16 +134,12 @@ df_parametros = carregar_dados_excel()
 
 def renderizar_logo(tamanho=180):
     if os.path.exists("logo.png"):
-        with open("logo.png", "rb") as image_file:
-            encoded = base64.b64encode(image_file.read()).decode()
-            st.markdown(f'''
-                <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-                    <img src="data:image/png;base64,{encoded}" width="{tamanho}">
-                </div>
-            ''', unsafe_allow_html=True)
+        with open("logo.png", "rb") as f:
+            encoded = base64.b64encode(f.read()).decode()
+            st.markdown(f'<div style="text-align: center; margin-bottom: 10px;"><img src="data:image/png;base64,{encoded}" width="{tamanho}"></div>', unsafe_allow_html=True)
 
 # ==========================================
-# 4. CONTROLE DE SESSÃO
+# 5. CONTROLE DE SESSÃO
 # ==========================================
 if 'usuario_logado' not in st.session_state:
     st.session_state.usuario_logado = None
@@ -100,26 +151,26 @@ def fazer_logout():
     st.session_state.pagina = 'login'
 
 # ==========================================
-# 5. MODAL: CADASTRAR POSTO FALTANTE
+# 6. MODAL: CADASTRAR POSTO FALTANTE
 # ==========================================
 @st.dialog("Cadastro Posto faltante")
 def modal_solicitar_posto():
-    st.markdown("Preencha os dados abaixo.")
+    st.markdown("<p style='color: black;'>Preencha os dados abaixo.</p>", unsafe_allow_html=True)
     
-    und_p = st.selectbox("Unidade:", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, placeholder="Selecione...")
+    und_p = st.selectbox("Unidade:", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None)
     df_cc_p = df_parametros[df_parametros['unidade'] == und_p] if und_p else pd.DataFrame(columns=df_parametros.columns)
     
-    cc_p = st.selectbox("Centro de Custo:", options=sorted([x for x in df_cc_p['cc'].unique() if x]), index=None, placeholder="Selecione...")
+    cc_p = st.selectbox("Centro de Custo:", options=sorted([x for x in df_cc_p['cc'].unique() if x]), index=None)
     df_sub_p = df_cc_p[df_cc_p['cc'] == cc_p] if cc_p else pd.DataFrame(columns=df_parametros.columns)
     
-    sub_p = st.selectbox("Subprocesso:", options=sorted([x for x in df_sub_p['sub'].unique() if x]), index=None, placeholder="Selecione...")
+    sub_p = st.selectbox("Subprocesso:", options=sorted([x for x in df_sub_p['sub'].unique() if x]), index=None)
     df_gestor_p = df_sub_p[df_sub_p['sub'] == sub_p] if sub_p else pd.DataFrame(columns=df_parametros.columns)
     
-    gestor_p = st.selectbox("Gestor:", options=sorted([x for x in df_gestor_p['gestor'].unique() if x]), index=None, placeholder="Selecione...")
-    cargo_p = st.selectbox("Qual Cargo deve pertencer a esse posto?:", options=sorted([x for x in df_parametros['cargo'].unique() if x]), index=None, placeholder="Selecione...")
+    gestor_p = st.selectbox("Gestor:", options=sorted([x for x in df_gestor_p['gestor'].unique() if x]), index=None)
+    cargo_p = st.selectbox("Qual Cargo deve pertencer a esse posto?:", options=sorted([x for x in df_parametros['cargo'].unique() if x]), index=None)
 
     st.write("")
-    if st.button("ENVIAR SOLICITAÇÃO", type="primary", use_container_width=True):
+    if st.button("ENVIAR SOLICITAÇÃO", use_container_width=True):
         if not all([und_p, cc_p, sub_p, gestor_p, cargo_p]):
             st.error("Por favor, preencha todos os campos antes de enviar.")
         else:
@@ -132,8 +183,9 @@ def modal_solicitar_posto():
                     wb = openpyxl.Workbook()
                     ws = wb.active
                     ws.append(["Data Solicitação", "Usuário", "Unidade", "Centro de Custo", "Subprocesso", "Gestor", "Cargo"])
-                    
-                data_atual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                
+                # Usa a variável de Fuso Horário de Brasília corrigida
+                data_atual = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
                 ws.append([data_atual, st.session_state.usuario_logado, und_p, cc_p, sub_p, gestor_p, cargo_p])
                 wb.save(arquivo_solicitacoes)
                 
@@ -141,10 +193,10 @@ def modal_solicitar_posto():
                 time.sleep(1.5)
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro ao salvar: {e}")
+                st.error(f"Erro ao salvar solicitação. Feche o arquivo se estiver aberto no seu PC.\nErro: {e}")
 
 # ==========================================
-# 6. TELAS DO APLICATIVO
+# 7. TELAS DO APLICATIVO
 # ==========================================
 
 # --- TELA DE LOGIN ---
@@ -154,7 +206,7 @@ if st.session_state.usuario_logado is None:
     with col2:
         with st.container(border=True):
             st.write("<br>", unsafe_allow_html=True)
-            renderizar_logo(200)
+            renderizar_logo(180)
             
             st.markdown("<h3 style='text-align: center; color: black;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
             st.write("<br>", unsafe_allow_html=True)
@@ -163,7 +215,8 @@ if st.session_state.usuario_logado is None:
             senha = st.text_input("Senha", type="password")
             
             st.write("<br>", unsafe_allow_html=True)
-            if st.button("ACESSAR SISTEMA", type="primary", use_container_width=True):
+            # O JavaScript detecta a palavra "ACESSAR SISTEMA" e pinta o botão de Azul
+            if st.button("ACESSAR SISTEMA", use_container_width=True):
                 if usuario in USUARIOS_PERMITIDOS and USUARIOS_PERMITIDOS[usuario] == senha:
                     st.session_state.usuario_logado = usuario
                     st.session_state.pagina = 'registro'
@@ -174,10 +227,10 @@ if st.session_state.usuario_logado is None:
 # --- TELAS INTERNAS ---
 else:
     # CABEÇALHO 
-    col_titulo, col_user, col_btn1, col_btn2 = st.columns([4, 2, 2, 1.5], vertical_alignment="bottom")
+    col_titulo, col_user, col_btn1, col_btn2 = st.columns([4, 2, 2, 1.5])
     
     with col_titulo:
-        st.markdown("<h2 style='color: black; margin-bottom: 0px;'>Sistema de Movimentações</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color: black; margin-top: -15px;'>Sistema de Movimentações</h2>", unsafe_allow_html=True)
     with col_user:
         st.write(f"👤 Logado como: **{st.session_state.usuario_logado}**")
     with col_btn1:
@@ -208,12 +261,7 @@ else:
         # ==== LADO ESQUERDO: SAÍDA ====
         with col_saida:
             with st.container(border=True):
-                # CABEÇALHO HTML NATIVO (Isso traz a cor que você pediu sem quebrar no Chrome)
-                st.markdown("""
-                <div style="background-color: #fff5f5; border: 2px solid #ffcdd2; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
-                    <h4 style="text-align: center; color: #b71c1c; margin: 0;">VAGA DE SAÍDA (RETIRADA)</h4>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown("<h4 style='text-align: center; color: #b71c1c;'>VAGA DE SAÍDA (RETIRADA)</h4>", unsafe_allow_html=True)
                 
                 s_und = st.selectbox("Unidade (Saída):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None)
                 df_s_cc = df_parametros[df_parametros['unidade'] == s_und] if s_und else pd.DataFrame(columns=df_parametros.columns)
@@ -236,12 +284,7 @@ else:
         # ==== LADO DIREITO: ENTRADA ====
         with col_entrada:
             with st.container(border=True):
-                # CABEÇALHO HTML NATIVO 
-                st.markdown("""
-                <div style="background-color: #f1f8e9; border: 2px solid #c8e6c9; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
-                    <h4 style="text-align: center; color: #1b5e20; margin: 0;">VAGA DE ENTRADA (NOVA)</h4>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown("<h4 style='text-align: center; color: #1b5e20;'>VAGA DE ENTRADA (NOVA)</h4>", unsafe_allow_html=True)
                 
                 e_und = st.selectbox("Unidade (Entrada):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None)
                 df_e_cc = df_parametros[df_parametros['unidade'] == e_und] if e_und else pd.DataFrame(columns=df_parametros.columns)
@@ -262,13 +305,13 @@ else:
                 e_qtd = st.number_input("Quantidade (Entrada):", min_value=1, value=1, step=1)
                 
                 st.write("")
-                if st.button("🚨 Não encontrou o posto? Clique aqui para solicitar cadastro", use_container_width=True):
+                if st.button("🚨 Não encontrou o posto? Clique aqui para solicitar", use_container_width=True):
                     modal_solicitar_posto()
 
         st.write("")
         
-        # ==== BOTÃO SALVAR NATIVO ====
-        if st.button("✅ CONFIRMAR MOVIMENTAÇÃO", type="primary", use_container_width=True):
+        # ==== BOTÃO SALVAR ====
+        if st.button("✅ CONFIRMAR MOVIMENTAÇÃO", use_container_width=True):
             if not requisitante:
                 st.warning("⚠️ O campo Requisitante é obrigatório.")
             elif not all([s_und, s_cc, s_sub, s_gestor, s_posto, s_cargo, e_und, e_cc, e_sub, e_gestor, e_posto, e_cargo]):
@@ -276,7 +319,8 @@ else:
             else:
                 conn = conectar_banco()
                 cursor = conn.cursor()
-                data_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # Usa a variável de Fuso Horário de Brasília corrigida
+                data_atual = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
                 
                 cursor.execute('''
                     INSERT INTO movimentacoes (
@@ -302,7 +346,7 @@ else:
                 time.sleep(1.5)
                 st.rerun()
 
-    # --- TELA DE CONSULTA ---
+    # --- TELA DE CONSULTA (COM TABELA COLORIDA E ESTILIZADA) ---
     elif st.session_state.pagina == 'consulta':
         conn = conectar_banco()
         df_historico = pd.read_sql_query(f'''
@@ -325,4 +369,17 @@ else:
         col_metric2.metric("ÚLTIMA MOVIMENTAÇÃO", ultima)
 
         st.markdown("#### Suas Movimentações Cadastradas")
-        st.dataframe(df_historico, use_container_width=True, hide_index=True)
+        
+        # PINTA AS COLUNAS DA TABELA (Saída de Vermelho e Entrada de Verde)
+        def colorir_tabela(coluna):
+            if coluna.name in ["CC Saída", "Qtd Saída", "Cargo Saída"]:
+                return ['background-color: #ffebee; color: #b71c1c'] * len(coluna)
+            elif coluna.name in ["CC Entrada", "Qtd Entrada", "Cargo Entrada"]:
+                return ['background-color: #e8f5e9; color: #1b5e20'] * len(coluna)
+            else:
+                return [''] * len(coluna)
+                
+        df_estilizado = df_historico.style.apply(colorir_tabela)
+
+        # Exibe a tabela estilizada e colorida
+        st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
