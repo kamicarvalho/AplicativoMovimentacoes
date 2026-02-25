@@ -128,6 +128,8 @@ if 'pagina' not in st.session_state:
     st.session_state.pagina = 'login'
 if 'sucesso_movimentacao' not in st.session_state:
     st.session_state.sucesso_movimentacao = False
+if 'form_key' not in st.session_state:
+    st.session_state.form_key = 0 # Variável mágica para forçar a limpeza dos campos
 
 def fazer_logout():
     st.session_state.usuario_logado = None
@@ -193,17 +195,20 @@ if st.session_state.usuario_logado is None:
             st.markdown("<h3 style='text-align: center; color: black;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
             st.write("<br>", unsafe_allow_html=True)
             
-            usuario = st.text_input("Usuário")
-            senha = st.text_input("Senha", type="password")
-            
-            st.write("<br>", unsafe_allow_html=True)
-            if st.button("ACESSAR SISTEMA", use_container_width=True):
-                if usuario in USUARIOS_PERMITIDOS and USUARIOS_PERMITIDOS[usuario] == senha:
-                    st.session_state.usuario_logado = usuario
-                    st.session_state.pagina = 'registro'
-                    st.rerun()
-                else:
-                    st.error("Usuário ou senha incorretos.")
+            # USO DO ST.FORM PARA PERMITIR A TECLA ENTER
+            with st.form("form_login", clear_on_submit=False):
+                usuario = st.text_input("Usuário")
+                senha = st.text_input("Senha", type="password")
+                st.write("<br>", unsafe_allow_html=True)
+                submit = st.form_submit_button("ACESSAR SISTEMA", use_container_width=True)
+                
+                if submit:
+                    if usuario in USUARIOS_PERMITIDOS and USUARIOS_PERMITIDOS[usuario] == senha:
+                        st.session_state.usuario_logado = usuario
+                        st.session_state.pagina = 'registro'
+                        st.rerun()
+                    else:
+                        st.error("Usuário ou senha incorretos.")
 
 # --- TELAS INTERNAS ---
 else:
@@ -233,13 +238,16 @@ else:
     # --- TELA PRINCIPAL (REGISTRO) ---
     if st.session_state.pagina == 'registro':
         
-        # MENSAGEM DE SUCESSO VEM PARA CÁ (Memória da Sessão)
+        # MENSAGEM DE SUCESSO (Fica no topo após recarregar a tela)
         if st.session_state.sucesso_movimentacao:
             st.success("✅ Movimentação registrada com sucesso!")
-            st.session_state.sucesso_movimentacao = False # Desliga para não ficar aparecendo sempre
+            st.session_state.sucesso_movimentacao = False 
+        
+        # Chave dinâmica para forçar a limpeza dos campos
+        fk = st.session_state.form_key 
         
         lista_req = sorted([x for x in df_parametros['requisitante'].unique() if x])
-        requisitante = st.selectbox("Quem solicitou a troca? (Pode digitar para pesquisar)", options=lista_req, index=None, placeholder="Selecione o requisitante...")
+        requisitante = st.selectbox("Quem solicitou a troca? (Pode digitar para pesquisar)", options=lista_req, index=None, placeholder="Selecione o requisitante...", key=f"req_{fk}")
 
         st.write("") 
         col_saida, col_entrada = st.columns(2, gap="large")
@@ -254,23 +262,23 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                s_und = st.selectbox("Unidade (Saída):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None)
+                s_und = st.selectbox("Unidade (Saída):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, key=f"s_und_{fk}")
                 df_s_cc = df_parametros[df_parametros['unidade'] == s_und] if s_und else pd.DataFrame(columns=df_parametros.columns)
                 
-                s_cc = st.selectbox("Centro de Custo (Saída):", options=sorted([x for x in df_s_cc['cc'].unique() if x]), index=None)
+                s_cc = st.selectbox("Centro de Custo (Saída):", options=sorted([x for x in df_s_cc['cc'].unique() if x]), index=None, key=f"s_cc_{fk}")
                 df_s_sub = df_s_cc[df_s_cc['cc'] == s_cc] if s_cc else pd.DataFrame(columns=df_parametros.columns)
                 
-                s_sub = st.selectbox("Subprocesso (Saída):", options=sorted([x for x in df_s_sub['sub'].unique() if x]), index=None)
+                s_sub = st.selectbox("Subprocesso (Saída):", options=sorted([x for x in df_s_sub['sub'].unique() if x]), index=None, key=f"s_sub_{fk}")
                 df_s_gestor = df_s_sub[df_s_sub['sub'] == s_sub] if s_sub else pd.DataFrame(columns=df_parametros.columns)
                 
-                s_gestor = st.selectbox("Gestor (Saída):", options=sorted([x for x in df_s_gestor['gestor'].unique() if x]), index=None)
+                s_gestor = st.selectbox("Gestor (Saída):", options=sorted([x for x in df_s_gestor['gestor'].unique() if x]), index=None, key=f"s_gestor_{fk}")
                 df_s_posto = df_s_gestor[df_s_gestor['gestor'] == s_gestor] if s_gestor else pd.DataFrame(columns=df_parametros.columns)
                 
-                s_posto = st.selectbox("Posto (Saída):", options=sorted([x for x in df_s_posto['posto'].unique() if x]), index=None)
+                s_posto = st.selectbox("Posto (Saída):", options=sorted([x for x in df_s_posto['posto'].unique() if x]), index=None, key=f"s_posto_{fk}")
                 df_s_cargo = df_s_posto[df_s_posto['posto'] == s_posto] if s_posto else pd.DataFrame(columns=df_parametros.columns)
                 
-                s_cargo = st.selectbox("Cargo (Saída):", options=sorted([x for x in df_s_cargo['cargo'].unique() if x]), index=None)
-                s_qtd = st.number_input("Quantidade (Saída):", min_value=1, value=1, step=1)
+                s_cargo = st.selectbox("Cargo (Saída):", options=sorted([x for x in df_s_cargo['cargo'].unique() if x]), index=None, key=f"s_cargo_{fk}")
+                s_qtd = st.number_input("Quantidade (Saída):", min_value=1, value=1, step=1, key=f"s_qtd_{fk}")
 
         # ==== LADO DIREITO: ENTRADA ====
         with col_entrada:
@@ -282,23 +290,23 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                e_und = st.selectbox("Unidade (Entrada):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None)
+                e_und = st.selectbox("Unidade (Entrada):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, key=f"e_und_{fk}")
                 df_e_cc = df_parametros[df_parametros['unidade'] == e_und] if e_und else pd.DataFrame(columns=df_parametros.columns)
                 
-                e_cc = st.selectbox("Centro de Custo (Entrada):", options=sorted([x for x in df_e_cc['cc'].unique() if x]), index=None)
+                e_cc = st.selectbox("Centro de Custo (Entrada):", options=sorted([x for x in df_e_cc['cc'].unique() if x]), index=None, key=f"e_cc_{fk}")
                 df_e_sub = df_e_cc[df_e_cc['cc'] == e_cc] if e_cc else pd.DataFrame(columns=df_parametros.columns)
                 
-                e_sub = st.selectbox("Subprocesso (Entrada):", options=sorted([x for x in df_e_sub['sub'].unique() if x]), index=None)
+                e_sub = st.selectbox("Subprocesso (Entrada):", options=sorted([x for x in df_e_sub['sub'].unique() if x]), index=None, key=f"e_sub_{fk}")
                 df_e_gestor = df_e_sub[df_e_sub['sub'] == e_sub] if e_sub else pd.DataFrame(columns=df_parametros.columns)
                 
-                e_gestor = st.selectbox("Gestor (Entrada):", options=sorted([x for x in df_e_gestor['gestor'].unique() if x]), index=None)
+                e_gestor = st.selectbox("Gestor (Entrada):", options=sorted([x for x in df_e_gestor['gestor'].unique() if x]), index=None, key=f"e_gestor_{fk}")
                 df_e_posto = df_e_gestor[df_e_gestor['gestor'] == e_gestor] if e_gestor else pd.DataFrame(columns=df_parametros.columns)
                 
-                e_posto = st.selectbox("Posto (Entrada):", options=sorted([x for x in df_e_posto['posto'].unique() if x]), index=None)
+                e_posto = st.selectbox("Posto (Entrada):", options=sorted([x for x in df_e_posto['posto'].unique() if x]), index=None, key=f"e_posto_{fk}")
                 df_e_cargo = df_e_posto[df_e_posto['posto'] == e_posto] if e_posto else pd.DataFrame(columns=df_parametros.columns)
                 
-                e_cargo = st.selectbox("Cargo (Entrada):", options=sorted([x for x in df_e_cargo['cargo'].unique() if x]), index=None)
-                e_qtd = st.number_input("Quantidade (Entrada):", min_value=1, value=1, step=1)
+                e_cargo = st.selectbox("Cargo (Entrada):", options=sorted([x for x in df_e_cargo['cargo'].unique() if x]), index=None, key=f"e_cargo_{fk}")
+                e_qtd = st.number_input("Quantidade (Entrada):", min_value=1, value=1, step=1, key=f"e_qtd_{fk}")
                 
                 st.write("")
                 if st.button("Não encontrou o posto? Clique aqui para solicitar", use_container_width=True):
@@ -338,8 +346,9 @@ else:
 
                 conn.close()
                 
-                # Ativa a memória de sucesso e limpa a tela imediatamente!
+                # Seta a mensagem de sucesso e muda a chave para resetar os campos instantaneamente!
                 st.session_state.sucesso_movimentacao = True
+                st.session_state.form_key += 1 
                 st.rerun()
 
     # --- TELA DE CONSULTA ---
