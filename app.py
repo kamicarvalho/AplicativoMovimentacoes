@@ -14,24 +14,23 @@ import time
 st.set_page_config(page_title="Movimentações - Headcount", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 2. FUSO HORÁRIO (CORREÇÃO DE HORA DO BRASIL)
+# 2. FUSO HORÁRIO (CORREÇÃO PARA BRASIL)
 # ==========================================
-# O Streamlit Cloud usa horário UTC (Londres). Isso força o horário de Brasília.
 fuso_br = timezone(timedelta(hours=-3))
 
 # ==========================================
-# 3. O MOTOR JAVASCRIPT (Cores e Botões)
+# 3. O MOTOR JAVASCRIPT (Cores dos Botões)
 # ==========================================
 js_code = """
 <script>
 const parentDoc = window.parent.document;
 
 function aplicarEstilos() {
-    // 1. Ocultar a barra superior do Streamlit
+    // Ocultar a barra superior do Streamlit
     const header = parentDoc.querySelector('header');
     if(header) header.style.display = 'none';
 
-    // 2. Ajuste de tela (Sem rolagem excessiva)
+    // Ajuste de tela (Aproveitamento de espaço)
     const mainBlock = parentDoc.querySelector('.block-container');
     if(mainBlock) {
         mainBlock.style.paddingTop = '1.5rem';
@@ -39,11 +38,11 @@ function aplicarEstilos() {
         mainBlock.style.maxWidth = '98%';
     }
 
-    // 3. Deixar os campos em cascata mais juntos
+    // Deixar os campos em cascata mais juntos
     const blocos = parentDoc.querySelectorAll('div[data-testid="stVerticalBlock"]');
     blocos.forEach(b => b.style.gap = '0.1rem');
 
-    // 4. PINTAR OS BOTÕES EXATAMENTE COMO SOLICITADO
+    // PINTAR OS BOTÕES
     const botoes = parentDoc.querySelectorAll('button');
     botoes.forEach(btn => {
         const txt = btn.innerText.trim();
@@ -65,27 +64,9 @@ function aplicarEstilos() {
             btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
         }
     });
-
-    // 5. PINTAR OS RETÂNGULOS (Vermelho e Verde Pastel)
-    const titulos = parentDoc.querySelectorAll('h4');
-    titulos.forEach(h => {
-        if(h.innerText.includes('VAGA DE SAÍDA')) {
-            const caixa = h.closest('div[data-testid="stVerticalBlockBorderWrapper"]');
-            if(caixa) {
-                caixa.style.backgroundColor = '#fff5f5';
-                caixa.style.border = '2px solid #ffcdd2';
-            }
-        } else if(h.innerText.includes('VAGA DE ENTRADA')) {
-            const caixa = h.closest('div[data-testid="stVerticalBlockBorderWrapper"]');
-            if(caixa) {
-                caixa.style.backgroundColor = '#f1f8e9';
-                caixa.style.border = '2px solid #c8e6c9';
-            }
-        }
-    });
 }
 
-// Executa e vigia a tela
+// Executa e vigia a tela para não perder a cor
 aplicarEstilos();
 const observer = new MutationObserver(aplicarEstilos);
 observer.observe(parentDoc.body, { childList: true, subtree: true });
@@ -139,12 +120,14 @@ def renderizar_logo(tamanho=180):
             st.markdown(f'<div style="text-align: center; margin-bottom: 10px;"><img src="data:image/png;base64,{encoded}" width="{tamanho}"></div>', unsafe_allow_html=True)
 
 # ==========================================
-# 5. CONTROLE DE SESSÃO
+# 5. CONTROLE DE SESSÃO E MEMÓRIA DE SUCESSO
 # ==========================================
 if 'usuario_logado' not in st.session_state:
     st.session_state.usuario_logado = None
 if 'pagina' not in st.session_state:
     st.session_state.pagina = 'login'
+if 'sucesso_movimentacao' not in st.session_state:
+    st.session_state.sucesso_movimentacao = False
 
 def fazer_logout():
     st.session_state.usuario_logado = None
@@ -184,7 +167,6 @@ def modal_solicitar_posto():
                     ws = wb.active
                     ws.append(["Data Solicitação", "Usuário", "Unidade", "Centro de Custo", "Subprocesso", "Gestor", "Cargo"])
                 
-                # Usa a variável de Fuso Horário de Brasília corrigida
                 data_atual = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
                 ws.append([data_atual, st.session_state.usuario_logado, und_p, cc_p, sub_p, gestor_p, cargo_p])
                 wb.save(arquivo_solicitacoes)
@@ -193,7 +175,7 @@ def modal_solicitar_posto():
                 time.sleep(1.5)
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro ao salvar solicitação. Feche o arquivo se estiver aberto no seu PC.\nErro: {e}")
+                st.error(f"Erro ao salvar: {e}")
 
 # ==========================================
 # 7. TELAS DO APLICATIVO
@@ -215,7 +197,6 @@ if st.session_state.usuario_logado is None:
             senha = st.text_input("Senha", type="password")
             
             st.write("<br>", unsafe_allow_html=True)
-            # O JavaScript detecta a palavra "ACESSAR SISTEMA" e pinta o botão de Azul
             if st.button("ACESSAR SISTEMA", use_container_width=True):
                 if usuario in USUARIOS_PERMITIDOS and USUARIOS_PERMITIDOS[usuario] == senha:
                     st.session_state.usuario_logado = usuario
@@ -252,6 +233,11 @@ else:
     # --- TELA PRINCIPAL (REGISTRO) ---
     if st.session_state.pagina == 'registro':
         
+        # MENSAGEM DE SUCESSO VEM PARA CÁ (Memória da Sessão)
+        if st.session_state.sucesso_movimentacao:
+            st.success("✅ Movimentação registrada com sucesso!")
+            st.session_state.sucesso_movimentacao = False # Desliga para não ficar aparecendo sempre
+        
         lista_req = sorted([x for x in df_parametros['requisitante'].unique() if x])
         requisitante = st.selectbox("Quem solicitou a troca? (Pode digitar para pesquisar)", options=lista_req, index=None, placeholder="Selecione o requisitante...")
 
@@ -261,7 +247,12 @@ else:
         # ==== LADO ESQUERDO: SAÍDA ====
         with col_saida:
             with st.container(border=True):
-                st.markdown("<h4 style='text-align: center; color: #b71c1c;'>VAGA DE SAÍDA (RETIRADA)</h4>", unsafe_allow_html=True)
+                # TÍTULO COM FUNDO PASTEL
+                st.markdown("""
+                <div style="background-color: #fff5f5; border: 2px solid #ffcdd2; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
+                    <h4 style="text-align: center; color: #b71c1c; margin: 0;">VAGA DE SAÍDA (RETIRADA)</h4>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 s_und = st.selectbox("Unidade (Saída):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None)
                 df_s_cc = df_parametros[df_parametros['unidade'] == s_und] if s_und else pd.DataFrame(columns=df_parametros.columns)
@@ -284,7 +275,12 @@ else:
         # ==== LADO DIREITO: ENTRADA ====
         with col_entrada:
             with st.container(border=True):
-                st.markdown("<h4 style='text-align: center; color: #1b5e20;'>VAGA DE ENTRADA (NOVA)</h4>", unsafe_allow_html=True)
+                # TÍTULO COM FUNDO PASTEL
+                st.markdown("""
+                <div style="background-color: #f1f8e9; border: 2px solid #c8e6c9; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
+                    <h4 style="text-align: center; color: #1b5e20; margin: 0;">VAGA DE ENTRADA (NOVA)</h4>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 e_und = st.selectbox("Unidade (Entrada):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None)
                 df_e_cc = df_parametros[df_parametros['unidade'] == e_und] if e_und else pd.DataFrame(columns=df_parametros.columns)
@@ -305,7 +301,7 @@ else:
                 e_qtd = st.number_input("Quantidade (Entrada):", min_value=1, value=1, step=1)
                 
                 st.write("")
-                if st.button("🚨 Não encontrou o posto? Clique aqui para solicitar", use_container_width=True):
+                if st.button("Não encontrou o posto? Clique aqui para solicitar", use_container_width=True):
                     modal_solicitar_posto()
 
         st.write("")
@@ -319,7 +315,6 @@ else:
             else:
                 conn = conectar_banco()
                 cursor = conn.cursor()
-                # Usa a variável de Fuso Horário de Brasília corrigida
                 data_atual = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
                 
                 cursor.execute('''
@@ -342,11 +337,12 @@ else:
                     st.error(f"Erro ao gerar espelho Excel: {e}")
 
                 conn.close()
-                st.success("✅ Movimentação registrada com sucesso!")
-                time.sleep(1.5)
+                
+                # Ativa a memória de sucesso e limpa a tela imediatamente!
+                st.session_state.sucesso_movimentacao = True
                 st.rerun()
 
-    # --- TELA DE CONSULTA (COM TABELA COLORIDA E ESTILIZADA) ---
+    # --- TELA DE CONSULTA ---
     elif st.session_state.pagina == 'consulta':
         conn = conectar_banco()
         df_historico = pd.read_sql_query(f'''
@@ -370,7 +366,7 @@ else:
 
         st.markdown("#### Suas Movimentações Cadastradas")
         
-        # PINTA AS COLUNAS DA TABELA (Saída de Vermelho e Entrada de Verde)
+        # Pinta a tabela de forma organizada
         def colorir_tabela(coluna):
             if coluna.name in ["CC Saída", "Qtd Saída", "Cargo Saída"]:
                 return ['background-color: #ffebee; color: #b71c1c'] * len(coluna)
@@ -380,6 +376,4 @@ else:
                 return [''] * len(coluna)
                 
         df_estilizado = df_historico.style.apply(colorir_tabela)
-
-        # Exibe a tabela estilizada e colorida
         st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
