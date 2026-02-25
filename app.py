@@ -8,84 +8,73 @@ import base64
 import time
 
 # ==========================================
-# 1. CONFIGURAÇÕES E SUPER CSS (À PROVA DE FALHAS)
+# 1. CONFIGURAÇÕES DA PÁGINA (Sempre a 1ª linha)
 # ==========================================
 st.set_page_config(page_title="Movimentações - Headcount", layout="wide", initial_sidebar_state="collapsed")
 
+# ==========================================
+# CSS DEFINITIVO (À PROVA DO GOOGLE CHROME)
+# ==========================================
 st.markdown("""
 <style>
-/* 1. OCULTA A BARRA BRANCA DO TOPO DO STREAMLIT QUE ESTAVA CORTANDO A TELA */
-header[data-testid="stHeader"] {
-    display: none !important;
-}
+/* 1. DESLIGA A BARRA SUPERIOR DO STREAMLIT QUE TAMPAVA O CABEÇALHO */
+header { visibility: hidden !important; }
 
-/* 2. PROTEGE O CABEÇALHO E REDUZ AS MARGENS (Sem barra de rolagem) */
+/* 2. ESPAÇAMENTO DA TELA (Tira rolagem desnecessária) */
 .block-container {
-    padding-top: 2rem !important;
+    padding-top: 1.5rem !important;
     padding-bottom: 1rem !important;
     padding-left: 2rem !important;
     padding-right: 2rem !important;
     max-width: 98% !important;
 }
 
-/* 3. DEIXA OS CAMPOS UM DEBAIXO DO OUTRO SEM BURACOS GIGANTES */
+/* Reduz o espaço entre uma caixa e outra */
 div[data-testid="stVerticalBlock"] {
     gap: 0.15rem !important;
 }
 
 /* =======================================
-   CORES DOS RETÂNGULOS PASTEL
+   A SUA IDEIA GENIAL: PINTAR AS CAIXAS (LISTAS SUSPENSAS)
 ======================================= */
-/* Caixa Saída (Vermelho Pastel) */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(#marcador-saida) {
+/* CAIXAS DE SAÍDA (Coluna 1) - Fundo Vermelho Pastel */
+div[data-testid="column"]:nth-of-type(1) div[data-baseweb="select"] > div,
+div[data-testid="column"]:nth-of-type(1) div[data-baseweb="input"] > div {
     background-color: #fff5f5 !important;
-    border: 2px solid #ffcdd2 !important;
-    border-radius: 12px !important;
+    border: 1px solid #ef9a9a !important;
 }
 
-/* Caixa Entrada (Verde Pastel) */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(#marcador-entrada) {
+/* CAIXAS DE ENTRADA (Coluna 2) - Fundo Verde Pastel */
+div[data-testid="column"]:nth-of-type(2) div[data-baseweb="select"] > div,
+div[data-testid="column"]:nth-of-type(2) div[data-baseweb="input"] > div {
     background-color: #f1f8e9 !important;
-    border: 2px solid #c8e6c9 !important;
-    border-radius: 12px !important;
+    border: 1px solid #a5d6a7 !important;
 }
 
 /* =======================================
-   CORES DOS BOTÕES INDIVIDUAIS
+   CORES DOS BOTÕES
 ======================================= */
-/* Botão Menu (Azul) */
+/* Botões Menu Superiores (Azul) */
 div.element-container:has(#ancora-menu) + div.element-container button {
-    background-color: #1976d2 !important;
-    color: white !important;
-    border: none !important;
+    background-color: #1976d2 !important; color: white !important; border: none !important;
 }
 div.element-container:has(#ancora-menu) + div.element-container button:hover { background-color: #1565c0 !important; }
 
 /* Botão Sair (Vermelho) */
 div.element-container:has(#ancora-sair) + div.element-container button {
-    background-color: #d32f2f !important;
-    color: white !important;
-    border: none !important;
+    background-color: #d32f2f !important; color: white !important; border: none !important;
 }
 div.element-container:has(#ancora-sair) + div.element-container button:hover { background-color: #c62828 !important; }
 
 /* Botão Faltou Posto (Laranja) */
 div.element-container:has(#ancora-posto) + div.element-container button {
-    background-color: #ff9800 !important;
-    color: white !important;
-    border: none !important;
-    font-weight: bold !important;
+    background-color: #ff9800 !important; color: white !important; border: none !important; font-weight: bold !important;
 }
 div.element-container:has(#ancora-posto) + div.element-container button:hover { background-color: #f57c00 !important; }
 
 /* Botão Confirmar Movimentação (Verde) */
 div.element-container:has(#ancora-salvar) + div.element-container button {
-    background-color: #2e7d32 !important;
-    color: white !important;
-    border: none !important;
-    font-weight: bold !important;
-    padding: 0.7rem !important;
-    font-size: 1.1rem !important;
+    background-color: #2e7d32 !important; color: white !important; border: none !important; font-weight: bold !important; padding: 0.7rem !important; font-size: 1.1rem !important;
 }
 div.element-container:has(#ancora-salvar) + div.element-container button:hover { background-color: #1b5e20 !important; }
 
@@ -136,7 +125,6 @@ def carregar_dados_excel():
 
 df_parametros = carregar_dados_excel()
 
-# Função à prova de falhas para centralizar a logo
 def renderizar_logo(tamanho=180):
     if os.path.exists("logo.png"):
         with open("logo.png", "rb") as image_file:
@@ -164,9 +152,9 @@ def fazer_logout():
 # ==========================================
 @st.dialog("Cadastro Posto faltante")
 def modal_solicitar_posto():
-    st.markdown("Preencha os dados abaixo.")
+    st.markdown("<p style='color: black;'>Preencha os dados abaixo.</p>", unsafe_allow_html=True)
     
-    # index=None deixa a caixa 100% vazia inicialmente
+    # Caixas nascem completamente vazias
     und_p = st.selectbox("Unidade:", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, placeholder="Selecione a Unidade")
     df_cc_p = df_parametros[df_parametros['unidade'] == und_p] if und_p else pd.DataFrame(columns=df_parametros.columns)
     
@@ -200,7 +188,7 @@ def modal_solicitar_posto():
                 wb.save(arquivo_solicitacoes)
                 
                 st.success("✅ Solicitação salva com sucesso!")
-                time.sleep(1.5)
+                time.sleep(1.5) # Fecha automático após 1.5s
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao salvar solicitação. Feche o arquivo se estiver aberto no seu PC.\nErro: {e}")
@@ -217,16 +205,17 @@ if st.session_state.usuario_logado is None:
         with st.container(border=True):
             st.write("<br>", unsafe_allow_html=True)
             
-            renderizar_logo(200) # Logo perfeitamente centralizada e do tamanho ideal
-                
-            st.markdown("<h3 style='text-align: center; color: black;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
+            renderizar_logo(200)
+            
+            # Título forçado a ser preto
+            st.markdown("<h3 style='text-align: center; color: black !important;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
             st.write("<br>", unsafe_allow_html=True)
             
             usuario = st.text_input("Usuário")
             senha = st.text_input("Senha", type="password")
             
             st.write("<br>", unsafe_allow_html=True)
-            st.markdown("<div id='ancora-salvar'></div>", unsafe_allow_html=True) # Botão de Acesso usa a cor verde também
+            st.markdown("<div id='ancora-salvar'></div>", unsafe_allow_html=True) 
             if st.button("ACESSAR SISTEMA", use_container_width=True):
                 if usuario in USUARIOS_PERMITIDOS and USUARIOS_PERMITIDOS[usuario] == senha:
                     st.session_state.usuario_logado = usuario
@@ -237,11 +226,12 @@ if st.session_state.usuario_logado is None:
 
 # --- TELAS INTERNAS ---
 else:
-    # CABEÇALHO PERFEITO E RESPONSIVO
+    # CABEÇALHO
     col_titulo, col_user, col_btn1, col_btn2 = st.columns([4, 2, 2, 1.5])
     
     with col_titulo:
-        st.markdown("<h2 style='color: black; margin-top: -15px;'>Sistema de Movimentações</h2>", unsafe_allow_html=True)
+        # Título do sistema forçado a ser preto
+        st.markdown("<h2 style='color: black !important; margin-top: -15px;'>Sistema de Movimentações</h2>", unsafe_allow_html=True)
     with col_user:
         st.write(f"👤 Logado como: **{st.session_state.usuario_logado}**")
     with col_btn1:
@@ -270,17 +260,14 @@ else:
 
         st.write("") 
 
-        # DIVISÃO 50/50 DA TELA
+        # DIVISÃO DA TELA (Esquerda e Direita)
         col_saida, col_entrada = st.columns(2, gap="large")
 
         # ==== LADO ESQUERDO: SAÍDA ====
         with col_saida:
             with st.container(border=True):
-                # ESSE CÓDIGO INVISÍVEL DIZ PRO NAVEGADOR PINTAR O FUNDO DE VERMELHO PASTEL
-                st.markdown("<div id='marcador-saida'></div>", unsafe_allow_html=True)
                 st.markdown("<h4 style='text-align: center; color: #b71c1c;'>VAGA DE SAÍDA (RETIRADA)</h4>", unsafe_allow_html=True)
                 
-                # Campos em cascata um debaixo do outro
                 s_und = st.selectbox("Unidade (Saída):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, placeholder="")
                 df_s_cc = df_parametros[df_parametros['unidade'] == s_und] if s_und else pd.DataFrame(columns=df_parametros.columns)
                 
@@ -303,8 +290,6 @@ else:
         # ==== LADO DIREITO: ENTRADA ====
         with col_entrada:
             with st.container(border=True):
-                # ESSE CÓDIGO INVISÍVEL DIZ PRO NAVEGADOR PINTAR O FUNDO DE VERDE PASTEL
-                st.markdown("<div id='marcador-entrada'></div>", unsafe_allow_html=True)
                 st.markdown("<h4 style='text-align: center; color: #1b5e20;'>VAGA DE ENTRADA (NOVA)</h4>", unsafe_allow_html=True)
                 
                 e_und = st.selectbox("Unidade (Entrada):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, placeholder="")
@@ -326,7 +311,6 @@ else:
                 
                 e_qtd = st.number_input("Quantidade (Entrada):", min_value=1, value=1, step=1)
                 
-                # BOTÃO POSTO FALTANTE (Pintado de Laranja)
                 st.write("")
                 st.markdown("<div id='ancora-posto'></div>", unsafe_allow_html=True)
                 if st.button("Não encontrou o posto? Clique aqui para solicitar", use_container_width=True):
@@ -334,7 +318,7 @@ else:
 
         st.write("")
         
-        # ==== BOTÃO SALVAR (Pintado de Verde) ====
+        # ==== BOTÃO SALVAR ====
         st.markdown("<div id='ancora-salvar'></div>", unsafe_allow_html=True)
         if st.button("CONFIRMAR MOVIMENTAÇÃO", use_container_width=True):
             if not requisitante:
