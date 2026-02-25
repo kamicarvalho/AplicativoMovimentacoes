@@ -4,80 +4,91 @@ import sqlite3
 from datetime import datetime
 import os
 import openpyxl
-import time
 import base64
+import time
 
 # ==========================================
-# 1. CONFIGURAÇÕES DA PÁGINA E DESIGN GLOBAL
+# 1. CONFIGURAÇÕES E SUPER CSS (À PROVA DE FALHAS)
 # ==========================================
 st.set_page_config(page_title="Movimentações - Headcount", layout="wide", initial_sidebar_state="collapsed")
 
-# Injeção de CSS para o fundo da página, sombras e layout compacto
 st.markdown("""
 <style>
-/* Fundo suave para a página inteira sair do branco básico */
-.stApp {
-    background-color: #f4f7f6;
+/* 1. OCULTA A BARRA BRANCA DO TOPO DO STREAMLIT QUE ESTAVA CORTANDO A TELA */
+header[data-testid="stHeader"] {
+    display: none !important;
 }
 
-/* Espaçamento do cabeçalho otimizado */
+/* 2. PROTEGE O CABEÇALHO E REDUZ AS MARGENS (Sem barra de rolagem) */
 .block-container {
-    padding-top: 3rem !important; 
-    padding-bottom: 2rem !important;
-    max-width: 95% !important;
+    padding-top: 2rem !important;
+    padding-bottom: 1rem !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+    max-width: 98% !important;
 }
 
-/* Deixa os campos mais juntinhos para caber tudo na tela */
+/* 3. DEIXA OS CAMPOS UM DEBAIXO DO OUTRO SEM BURACOS GIGANTES */
 div[data-testid="stVerticalBlock"] {
-    gap: 0.1rem !important;
+    gap: 0.15rem !important;
 }
 
-/* Estilo para as caixas ganharem uma sombra e ficarem elegantes */
-div[data-testid="stVerticalBlockBorderWrapper"] {
-    background-color: white;
-    border-radius: 12px !important;
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.05) !important;
-    border: none !important;
-}
-
-/* PINTURA DA CAIXA SAÍDA (Vermelho Pastel) */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.bg-saida) {
+/* =======================================
+   CORES DOS RETÂNGULOS PASTEL
+======================================= */
+/* Caixa Saída (Vermelho Pastel) */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(#marcador-saida) {
     background-color: #fff5f5 !important;
-    border: 1px solid #ffcdd2 !important;
+    border: 2px solid #ffcdd2 !important;
+    border-radius: 12px !important;
 }
 
-/* PINTURA DA CAIXA ENTRADA (Verde Pastel) */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.bg-entrada) {
+/* Caixa Entrada (Verde Pastel) */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(#marcador-entrada) {
     background-color: #f1f8e9 !important;
-    border: 1px solid #c8e6c9 !important;
+    border: 2px solid #c8e6c9 !important;
+    border-radius: 12px !important;
 }
 
-/* ESTILO DO BOTÃO CONFIRMAR (VERDE) */
-div[data-testid="stElementContainer"]:has(.btn-confirmar) + div[data-testid="stElementContainer"] button {
-    background-color: #2e7d32 !important;
+/* =======================================
+   CORES DOS BOTÕES INDIVIDUAIS
+======================================= */
+/* Botão Menu (Azul) */
+div.element-container:has(#ancora-menu) + div.element-container button {
+    background-color: #1976d2 !important;
     color: white !important;
-    font-size: 18px !important;
-    font-weight: bold !important;
-    height: 55px !important;
-    border-radius: 8px !important;
     border: none !important;
-    box-shadow: 0px 4px 6px rgba(46, 125, 50, 0.3) !important;
 }
-div[data-testid="stElementContainer"]:has(.btn-confirmar) + div[data-testid="stElementContainer"] button:hover {
-    background-color: #1b5e20 !important;
-}
+div.element-container:has(#ancora-menu) + div.element-container button:hover { background-color: #1565c0 !important; }
 
-/* ESTILO DO BOTÃO POSTO FALTANTE (LARANJA) */
-div[data-testid="stElementContainer"]:has(.btn-posto) + div[data-testid="stElementContainer"] button {
+/* Botão Sair (Vermelho) */
+div.element-container:has(#ancora-sair) + div.element-container button {
+    background-color: #d32f2f !important;
+    color: white !important;
+    border: none !important;
+}
+div.element-container:has(#ancora-sair) + div.element-container button:hover { background-color: #c62828 !important; }
+
+/* Botão Faltou Posto (Laranja) */
+div.element-container:has(#ancora-posto) + div.element-container button {
     background-color: #ff9800 !important;
     color: white !important;
-    font-weight: bold !important;
     border: none !important;
-    border-radius: 6px !important;
+    font-weight: bold !important;
 }
-div[data-testid="stElementContainer"]:has(.btn-posto) + div[data-testid="stElementContainer"] button:hover {
-    background-color: #e68a00 !important;
+div.element-container:has(#ancora-posto) + div.element-container button:hover { background-color: #f57c00 !important; }
+
+/* Botão Confirmar Movimentação (Verde) */
+div.element-container:has(#ancora-salvar) + div.element-container button {
+    background-color: #2e7d32 !important;
+    color: white !important;
+    border: none !important;
+    font-weight: bold !important;
+    padding: 0.7rem !important;
+    font-size: 1.1rem !important;
 }
+div.element-container:has(#ancora-salvar) + div.element-container button:hover { background-color: #1b5e20 !important; }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -88,7 +99,7 @@ USUARIOS_PERMITIDOS = {
 }
 
 # ==========================================
-# 2. BANCO DE DADOS E LER EXCEL
+# 2. BANCO DE DADOS
 # ==========================================
 def conectar_banco():
     conn = sqlite3.connect('headcount_v3.db')
@@ -106,6 +117,9 @@ def conectar_banco():
     conn.commit()
     return conn
 
+# ==========================================
+# 3. LER EXCEL
+# ==========================================
 @st.cache_data
 def carregar_dados_excel():
     arquivo_excel = 'parametros.xlsx'
@@ -122,14 +136,19 @@ def carregar_dados_excel():
 
 df_parametros = carregar_dados_excel()
 
+# Função à prova de falhas para centralizar a logo
 def renderizar_logo(tamanho=180):
     if os.path.exists("logo.png"):
         with open("logo.png", "rb") as image_file:
             encoded = base64.b64encode(image_file.read()).decode()
-            st.markdown(f'<div style="text-align: center;"><img src="data:image/png;base64,{encoded}" width="{tamanho}"></div>', unsafe_allow_html=True)
+            st.markdown(f'''
+                <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+                    <img src="data:image/png;base64,{encoded}" style="width: {tamanho}px; max-width: 100%;">
+                </div>
+            ''', unsafe_allow_html=True)
 
 # ==========================================
-# 3. SESSÃO E LOGIN
+# 4. SESSÃO E LOGIN
 # ==========================================
 if 'usuario_logado' not in st.session_state:
     st.session_state.usuario_logado = None
@@ -141,29 +160,28 @@ def fazer_logout():
     st.session_state.pagina = 'login'
 
 # ==========================================
-# 4. MODAL: CADASTRAR POSTO FALTANTE
+# 5. MODAL: CADASTRAR POSTO FALTANTE
 # ==========================================
 @st.dialog("Cadastro Posto faltante")
 def modal_solicitar_posto():
     st.markdown("Preencha os dados abaixo.")
     
-    # O index=None garante que a caixa nasça totalmente em branco!
-    und_p = st.selectbox("Unidade:", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, placeholder="Selecione...")
-    
-    # Prevenção: só cria o filtro de CC se a Unidade já foi preenchida
+    # index=None deixa a caixa 100% vazia inicialmente
+    und_p = st.selectbox("Unidade:", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, placeholder="Selecione a Unidade")
     df_cc_p = df_parametros[df_parametros['unidade'] == und_p] if und_p else pd.DataFrame(columns=df_parametros.columns)
-    cc_p = st.selectbox("Centro de Custo:", options=sorted([x for x in df_cc_p['cc'].unique() if x]), index=None, placeholder="Selecione...")
     
+    cc_p = st.selectbox("Centro de Custo:", options=sorted([x for x in df_cc_p['cc'].unique() if x]), index=None, placeholder="Selecione o CC")
     df_sub_p = df_cc_p[df_cc_p['cc'] == cc_p] if cc_p else pd.DataFrame(columns=df_parametros.columns)
-    sub_p = st.selectbox("Subprocesso:", options=sorted([x for x in df_sub_p['sub'].unique() if x]), index=None, placeholder="Selecione...")
     
+    sub_p = st.selectbox("Subprocesso:", options=sorted([x for x in df_sub_p['sub'].unique() if x]), index=None, placeholder="Selecione o Subprocesso")
     df_gestor_p = df_sub_p[df_sub_p['sub'] == sub_p] if sub_p else pd.DataFrame(columns=df_parametros.columns)
-    gestor_p = st.selectbox("Gestor:", options=sorted([x for x in df_gestor_p['gestor'].unique() if x]), index=None, placeholder="Selecione...")
     
-    cargo_p = st.selectbox("Qual Cargo deve pertencer a esse posto?:", options=sorted([x for x in df_parametros['cargo'].unique() if x]), index=None, placeholder="Selecione...")
+    gestor_p = st.selectbox("Gestor:", options=sorted([x for x in df_gestor_p['gestor'].unique() if x]), index=None, placeholder="Selecione o Gestor")
+    
+    cargo_p = st.selectbox("Qual Cargo deve pertencer a esse posto?:", options=sorted([x for x in df_parametros['cargo'].unique() if x]), index=None, placeholder="Selecione o Cargo")
 
     st.write("")
-    if st.button("ENVIAR SOLICITAÇÃO AO RH", use_container_width=True):
+    if st.button("ENVIAR SOLICITAÇÃO", type="primary", use_container_width=True):
         if not all([und_p, cc_p, sub_p, gestor_p, cargo_p]):
             st.error("Por favor, preencha todos os campos antes de enviar.")
         else:
@@ -181,7 +199,6 @@ def modal_solicitar_posto():
                 ws.append([data_atual, st.session_state.usuario_logado, und_p, cc_p, sub_p, gestor_p, cargo_p])
                 wb.save(arquivo_solicitacoes)
                 
-                # Exibe a mensagem, espera 1.5 seg pra pessoa ler, e fecha o modal
                 st.success("✅ Solicitação salva com sucesso!")
                 time.sleep(1.5)
                 st.rerun()
@@ -189,24 +206,28 @@ def modal_solicitar_posto():
                 st.error(f"Erro ao salvar solicitação. Feche o arquivo se estiver aberto no seu PC.\nErro: {e}")
 
 # ==========================================
-# 5. TELAS DO APLICATIVO
+# 6. TELAS DO APLICATIVO
 # ==========================================
 
 # --- TELA DE LOGIN ---
 if st.session_state.usuario_logado is None:
-    st.write("<br><br>", unsafe_allow_html=True)
+    st.write("<br>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1.5, 1.2, 1.5]) 
     with col2:
         with st.container(border=True):
             st.write("<br>", unsafe_allow_html=True)
-            renderizar_logo(160) 
-            st.markdown("<h3 style='text-align: center; color: #1f538d;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
+            
+            renderizar_logo(200) # Logo perfeitamente centralizada e do tamanho ideal
+                
+            st.markdown("<h3 style='text-align: center; color: black;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
+            st.write("<br>", unsafe_allow_html=True)
             
             usuario = st.text_input("Usuário")
             senha = st.text_input("Senha", type="password")
             
             st.write("<br>", unsafe_allow_html=True)
-            if st.button("ACESSAR SISTEMA", type="primary", use_container_width=True):
+            st.markdown("<div id='ancora-salvar'></div>", unsafe_allow_html=True) # Botão de Acesso usa a cor verde também
+            if st.button("ACESSAR SISTEMA", use_container_width=True):
                 if usuario in USUARIOS_PERMITIDOS and USUARIOS_PERMITIDOS[usuario] == senha:
                     st.session_state.usuario_logado = usuario
                     st.session_state.pagina = 'registro'
@@ -216,13 +237,15 @@ if st.session_state.usuario_logado is None:
 
 # --- TELAS INTERNAS ---
 else:
-    # CABEÇALHO
-    col_titulo, col_user, col_btn1, col_btn2 = st.columns([4, 2.5, 2, 1])
+    # CABEÇALHO PERFEITO E RESPONSIVO
+    col_titulo, col_user, col_btn1, col_btn2 = st.columns([4, 2, 2, 1.5])
+    
     with col_titulo:
-        st.markdown("<h3 style='color: #1f538d; margin-top: -10px;'>Sistema de Movimentações</h3>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color: black; margin-top: -15px;'>Sistema de Movimentações</h2>", unsafe_allow_html=True)
     with col_user:
         st.write(f"👤 Logado como: **{st.session_state.usuario_logado}**")
     with col_btn1:
+        st.markdown("<div id='ancora-menu'></div>", unsafe_allow_html=True)
         if st.session_state.pagina == 'registro':
             if st.button("Ver Histórico (Consultas)", use_container_width=True):
                 st.session_state.pagina = 'consulta'
@@ -232,6 +255,7 @@ else:
                 st.session_state.pagina = 'registro'
                 st.rerun()
     with col_btn2:
+        st.markdown("<div id='ancora-sair'></div>", unsafe_allow_html=True)
         if st.button("Sair", use_container_width=True):
             fazer_logout()
             st.rerun()
@@ -242,22 +266,21 @@ else:
     if st.session_state.pagina == 'registro':
         
         lista_req = sorted([x for x in df_parametros['requisitante'].unique() if x])
-        
-        # Inicia vazio também para forçar a pessoa a pesquisar
-        requisitante = st.selectbox("Quem solicitou a troca? (Digite para pesquisar)", options=lista_req, index=None, placeholder="Selecione o requisitante...")
+        requisitante = st.selectbox("Quem solicitou a troca? (Pode digitar para pesquisar)", options=lista_req, index=None, placeholder="Selecione o requisitante...")
 
         st.write("") 
 
-        # Divisão 50/50
+        # DIVISÃO 50/50 DA TELA
         col_saida, col_entrada = st.columns(2, gap="large")
 
         # ==== LADO ESQUERDO: SAÍDA ====
         with col_saida:
             with st.container(border=True):
-                st.markdown("<div class='bg-saida'></div>", unsafe_allow_html=True)
-                st.markdown("<h4 style='text-align: center; color: #c62828;'>VAGA DE SAÍDA (RETIRADA)</h4>", unsafe_allow_html=True)
+                # ESSE CÓDIGO INVISÍVEL DIZ PRO NAVEGADOR PINTAR O FUNDO DE VERMELHO PASTEL
+                st.markdown("<div id='marcador-saida'></div>", unsafe_allow_html=True)
+                st.markdown("<h4 style='text-align: center; color: #b71c1c;'>VAGA DE SAÍDA (RETIRADA)</h4>", unsafe_allow_html=True)
                 
-                # index=None para os campos começarem zerados
+                # Campos em cascata um debaixo do outro
                 s_und = st.selectbox("Unidade (Saída):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, placeholder="")
                 df_s_cc = df_parametros[df_parametros['unidade'] == s_und] if s_und else pd.DataFrame(columns=df_parametros.columns)
                 
@@ -280,8 +303,9 @@ else:
         # ==== LADO DIREITO: ENTRADA ====
         with col_entrada:
             with st.container(border=True):
-                st.markdown("<div class='bg-entrada'></div>", unsafe_allow_html=True)
-                st.markdown("<h4 style='text-align: center; color: #2e7d32;'>VAGA DE ENTRADA (NOVA)</h4>", unsafe_allow_html=True)
+                # ESSE CÓDIGO INVISÍVEL DIZ PRO NAVEGADOR PINTAR O FUNDO DE VERDE PASTEL
+                st.markdown("<div id='marcador-entrada'></div>", unsafe_allow_html=True)
+                st.markdown("<h4 style='text-align: center; color: #1b5e20;'>VAGA DE ENTRADA (NOVA)</h4>", unsafe_allow_html=True)
                 
                 e_und = st.selectbox("Unidade (Entrada):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, placeholder="")
                 df_e_cc = df_parametros[df_parametros['unidade'] == e_und] if e_und else pd.DataFrame(columns=df_parametros.columns)
@@ -302,15 +326,16 @@ else:
                 
                 e_qtd = st.number_input("Quantidade (Entrada):", min_value=1, value=1, step=1)
                 
+                # BOTÃO POSTO FALTANTE (Pintado de Laranja)
                 st.write("")
-                st.markdown("<div class='btn-posto'></div>", unsafe_allow_html=True)
+                st.markdown("<div id='ancora-posto'></div>", unsafe_allow_html=True)
                 if st.button("Não encontrou o posto? Clique aqui para solicitar", use_container_width=True):
                     modal_solicitar_posto()
 
         st.write("")
         
-        # ==== BOTÃO SALVAR ====
-        st.markdown("<div class='btn-confirmar'></div>", unsafe_allow_html=True)
+        # ==== BOTÃO SALVAR (Pintado de Verde) ====
+        st.markdown("<div id='ancora-salvar'></div>", unsafe_allow_html=True)
         if st.button("CONFIRMAR MOVIMENTAÇÃO", use_container_width=True):
             if not requisitante:
                 st.warning("⚠️ O campo Requisitante é obrigatório.")
@@ -342,8 +367,8 @@ else:
 
                 conn.close()
                 st.success("✅ Movimentação registrada com sucesso!")
-                time.sleep(1.5) # Dá tempo de ver a mensagem de sucesso
-                st.rerun()      # Limpa os campos da tela principal
+                time.sleep(1.5)
+                st.rerun()
 
     # --- TELA DE CONSULTA ---
     elif st.session_state.pagina == 'consulta':
