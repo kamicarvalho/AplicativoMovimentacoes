@@ -6,46 +6,46 @@ import os
 import openpyxl
 
 # ==========================================
-# 1. CONFIGURAÇÕES DA PÁGINA (Deve ser a primeira linha)
+# 1. CONFIGURAÇÕES DA PÁGINA (Sempre a 1ª linha)
 # ==========================================
 st.set_page_config(page_title="Movimentações - Headcount", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# MÁGICA VISUAL: CSS PARA CORES E TIRAR BARRA DE ROLAGEM
+# MÁGICA VISUAL: CSS PARA CORES E ESPAÇAMENTOS
 # ==========================================
 st.markdown("""
 <style>
-/* 1. Remove os espaços vazios gigantes do topo e laterais (Deixa compacto para não rolar a tela) */
+/* 1. Protege o topo para não cortar o cabeçalho, mas reduz embaixo para caber na tela */
 .block-container {
-    padding-top: 1.5rem !important;
+    padding-top: 3rem !important; 
     padding-bottom: 1rem !important;
     max-width: 98% !important;
 }
 
-/* 2. Reduz o espaço vertical entre os campos (Inputs) */
+/* 2. Aproxima os campos de texto para a caixa não ficar gigantesca (Evita barra de rolagem) */
 div[data-testid="stVerticalBlock"] {
-    gap: 0.3rem !important;
+    gap: 0.1rem !important;
 }
 
-/* 3. PINTAR CAIXAS PASTEL: Acha a caixa que tem o título de SAÍDA e pinta de Vermelho Pastel */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(h4:contains("VAGA DE SAÍDA")) {
-    background-color: #ffebee !important;
-    border: 2px solid #ef9a9a !important;
+/* 3. PINTA CAIXA DE SAÍDA: Fundo Vermelho Pastel */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(#bg-saida) {
+    background-color: #fff5f5 !important;
+    border: 2px solid #ffcdd2 !important;
     border-radius: 15px !important;
 }
 
-/* 4. PINTAR CAIXAS PASTEL: Acha a caixa que tem o título de ENTRADA e pinta de Verde Pastel */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(h4:contains("VAGA DE ENTRADA")) {
-    background-color: #e8f5e9 !important;
-    border: 2px solid #a5d6a7 !important;
+/* 4. PINTA CAIXA DE ENTRADA: Fundo Verde Pastel */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(#bg-entrada) {
+    background-color: #f1f8e9 !important;
+    border: 2px solid #c8e6c9 !important;
     border-radius: 15px !important;
 }
 
-/* 5. Pinta o Botão "Confirmar Movimentação" de Verde Forte */
+/* 5. Pinta o Botão "Confirmar Movimentação" de Verde */
 button[kind="primary"] {
     background-color: #2e7d32 !important;
+    border-color: #2e7d32 !important;
     color: white !important;
-    border: none !important;
     font-weight: bold !important;
     padding: 0.75rem !important;
 }
@@ -53,16 +53,15 @@ button[kind="primary"]:hover {
     background-color: #1b5e20 !important;
 }
 
-/* 6. Pinta o Botão "Não encontrou o posto?" de Laranja Destacado */
-button:has(p:contains("Não encontrou o posto?")) {
+/* 6. Pinta o Botão "Faltou posto" de Laranja para destacar */
+div:has(#btn-posto) button {
     background-color: #ff9800 !important;
+    border-color: #ff9800 !important;
     color: white !important;
-    border: none !important;
     font-weight: bold !important;
 }
-button:has(p:contains("Não encontrou o posto?")):hover {
+div:has(#btn-posto) button:hover {
     background-color: #f57c00 !important;
-    color: white !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -146,7 +145,9 @@ def modal_solicitar_posto():
     
     cargo_p = st.selectbox("Qual Cargo deve pertencer a esse posto?:", sorted([x for x in df_parametros['cargo'].unique() if x]), key="p_cargo")
 
-    if st.button("ENVIAR SOLICITAÇÃO AO RH", type="primary"):
+    # Botão de envio
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("ENVIAR SOLICITAÇÃO", type="primary", use_container_width=True):
         arquivo_solicitacoes = "solicitacoes_postos.xlsx"
         try:
             if os.path.exists(arquivo_solicitacoes):
@@ -173,21 +174,26 @@ def modal_solicitar_posto():
 
 # --- TELA DE LOGIN ---
 if st.session_state.usuario_logado is None:
-    # Ajuste milimétrico das colunas para centralizar a logo perfeitamente
-    col1, col2, col3 = st.columns([1.5, 1, 1.5])
+    st.write("<br><br>", unsafe_allow_html=True)
+    
+    # Ajuste para a logo não cortar (Colunas proporcionais)
+    col1, col2, col3 = st.columns([1.2, 1, 1.2])
     with col2:
-        st.write("")
-        st.write("")
-        try:
-            st.image("logo.png", use_container_width=True)
-        except:
-            pass
-        st.markdown("<h2 style='text-align: center; color: #333333;'>Movimentações<br>HeadCount</h2>", unsafe_allow_html=True)
-        
-        with st.form("form_login"):
+        with st.container(border=True):
+            st.write("<br>", unsafe_allow_html=True)
+            # Imagem no centro exato (sem forçar corte)
+            try:
+                st.image("logo.png") 
+            except:
+                pass
+                
+            st.markdown("<h3 style='text-align: center; color: #333333;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
+            
             usuario = st.text_input("Usuário")
             senha = st.text_input("Senha", type="password")
-            submit = st.form_submit_button("ACESSAR SISTEMA", use_container_width=True)
+            
+            st.write("<br>", unsafe_allow_html=True)
+            submit = st.button("ACESSAR SISTEMA", type="primary", use_container_width=True)
             
             if submit:
                 if usuario in USUARIOS_PERMITIDOS and USUARIOS_PERMITIDOS[usuario] == senha:
@@ -199,10 +205,10 @@ if st.session_state.usuario_logado is None:
 
 # --- TELAS INTERNAS ---
 else:
-    # Cabeçalho Superior super compacto
-    col_titulo, col_user, col_btn1, col_btn2 = st.columns([5, 3, 2, 1])
+    # Cabeçalho Superior Alinhado
+    col_titulo, col_user, col_btn1, col_btn2 = st.columns([4, 2.5, 2, 1])
     with col_titulo:
-        st.markdown("<h3 style='margin-top: -10px;'>Nova Movimentação</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: -10px;'>Sistema de Movimentações</h3>", unsafe_allow_html=True)
     with col_user:
         st.write(f"👤 **Logado como:** {st.session_state.usuario_logado}")
     with col_btn1:
@@ -219,80 +225,81 @@ else:
             fazer_logout()
             st.rerun()
 
+    st.divider()
+
     # --- TELA PRINCIPAL (REGISTRO) ---
     if st.session_state.pagina == 'registro':
         
         lista_req = sorted([x for x in df_parametros['requisitante'].unique() if x])
-        requisitante = st.selectbox("Quem solicitou a troca? (Pode digitar para pesquisar)", options=[""] + lista_req)
+        requisitante = st.selectbox("Quem solicitou a troca?", options=[""] + lista_req)
 
-        # Divisão 50/50 da tela principal
+        st.write("") 
+
+        # Divisão das Caixas
         col_saida, col_entrada = st.columns(2, gap="medium")
 
         # ==== LADO ESQUERDO: SAÍDA ====
         with col_saida:
             with st.container(border=True):
-                # ESSE TÍTULO É A CHAVE PRO CSS PINTAR O FUNDO DE VERMELHO PASTEL
+                # O marcador invisível que avisa o CSS para pintar esta caixa
+                st.markdown("<div id='bg-saida'></div>", unsafe_allow_html=True)
                 st.markdown("<h4 style='text-align: center; color: #c62828;'>VAGA DE SAÍDA (RETIRADA)</h4>", unsafe_allow_html=True)
                 
-                # Divisão interna 2x2 para economizar altura da tela
-                s_c1, s_c2 = st.columns(2)
+                # Campos um embaixo do outro
+                s_und = st.selectbox("Unidade (Saída):", options=[""] + sorted([x for x in df_parametros['unidade'].unique() if x]))
+                df_s_cc = df_parametros[df_parametros['unidade'] == s_und] if s_und else df_parametros
                 
-                with s_c1:
-                    s_und = st.selectbox("Unidade (Saída):", options=[""] + sorted([x for x in df_parametros['unidade'].unique() if x]))
-                    df_s_cc = df_parametros[df_parametros['unidade'] == s_und] if s_und else df_parametros
-                    
-                    s_cc = st.selectbox("Centro de Custo (Saída):", options=[""] + sorted([x for x in df_s_cc['cc'].unique() if x]))
-                    df_s_sub = df_s_cc[df_s_cc['cc'] == s_cc] if s_cc else df_s_cc
-                    
-                    s_sub = st.selectbox("Subprocesso (Saída):", options=[""] + sorted([x for x in df_s_sub['sub'].unique() if x]))
-                    
-                    s_qtd = st.number_input("Quantidade (Saída):", min_value=1, value=1, step=1)
-
-                with s_c2:
-                    df_s_gestor = df_s_sub[df_s_sub['sub'] == s_sub] if s_sub else df_s_sub
-                    s_gestor = st.selectbox("Gestor (Saída):", options=[""] + sorted([x for x in df_s_gestor['gestor'].unique() if x]))
-                    
-                    df_s_posto = df_s_gestor[df_s_gestor['gestor'] == s_gestor] if s_gestor else df_s_gestor
-                    s_posto = st.selectbox("Posto (Saída):", options=[""] + sorted([x for x in df_s_posto['posto'].unique() if x]))
-                    
-                    df_s_cargo = df_s_posto[df_s_posto['posto'] == s_posto] if s_posto else df_s_posto
-                    s_cargo = st.selectbox("Cargo (Saída):", options=[""] + sorted([x for x in df_s_cargo['cargo'].unique() if x]))
+                s_cc = st.selectbox("Centro de Custo (Saída):", options=[""] + sorted([x for x in df_s_cc['cc'].unique() if x]))
+                df_s_sub = df_s_cc[df_s_cc['cc'] == s_cc] if s_cc else df_s_cc
+                
+                s_sub = st.selectbox("Subprocesso (Saída):", options=[""] + sorted([x for x in df_s_sub['sub'].unique() if x]))
+                df_s_gestor = df_s_sub[df_s_sub['sub'] == s_sub] if s_sub else df_s_sub
+                
+                s_gestor = st.selectbox("Gestor (Saída):", options=[""] + sorted([x for x in df_s_gestor['gestor'].unique() if x]))
+                df_s_posto = df_s_gestor[df_s_gestor['gestor'] == s_gestor] if s_gestor else df_s_gestor
+                
+                s_posto = st.selectbox("Posto (Saída):", options=[""] + sorted([x for x in df_s_posto['posto'].unique() if x]))
+                df_s_cargo = df_s_posto[df_s_posto['posto'] == s_posto] if s_posto else df_s_posto
+                
+                s_cargo = st.selectbox("Cargo (Saída):", options=[""] + sorted([x for x in df_s_cargo['cargo'].unique() if x]))
+                
+                s_qtd = st.number_input("Quantidade (Saída):", min_value=1, value=1, step=1)
 
         # ==== LADO DIREITO: ENTRADA ====
         with col_entrada:
             with st.container(border=True):
-                # ESSE TÍTULO É A CHAVE PRO CSS PINTAR O FUNDO DE VERDE PASTEL
+                # O marcador invisível que avisa o CSS para pintar esta caixa
+                st.markdown("<div id='bg-entrada'></div>", unsafe_allow_html=True)
                 st.markdown("<h4 style='text-align: center; color: #2e7d32;'>VAGA DE ENTRADA (NOVA)</h4>", unsafe_allow_html=True)
                 
-                e_c1, e_c2 = st.columns(2)
+                # Campos um embaixo do outro
+                e_und = st.selectbox("Unidade (Entrada):", options=[""] + sorted([x for x in df_parametros['unidade'].unique() if x]))
+                df_e_cc = df_parametros[df_parametros['unidade'] == e_und] if e_und else df_parametros
                 
-                with e_c1:
-                    e_und = st.selectbox("Unidade (Entrada):", options=[""] + sorted([x for x in df_parametros['unidade'].unique() if x]))
-                    df_e_cc = df_parametros[df_parametros['unidade'] == e_und] if e_und else df_parametros
-                    
-                    e_cc = st.selectbox("Centro de Custo (Entrada):", options=[""] + sorted([x for x in df_e_cc['cc'].unique() if x]))
-                    df_e_sub = df_e_cc[df_e_cc['cc'] == e_cc] if e_cc else df_e_cc
-                    
-                    e_sub = st.selectbox("Subprocesso (Entrada):", options=[""] + sorted([x for x in df_e_sub['sub'].unique() if x]))
-                    
-                    e_qtd = st.number_input("Quantidade (Entrada):", min_value=1, value=1, step=1)
+                e_cc = st.selectbox("Centro de Custo (Entrada):", options=[""] + sorted([x for x in df_e_cc['cc'].unique() if x]))
+                df_e_sub = df_e_cc[df_e_cc['cc'] == e_cc] if e_cc else df_e_cc
+                
+                e_sub = st.selectbox("Subprocesso (Entrada):", options=[""] + sorted([x for x in df_e_sub['sub'].unique() if x]))
+                df_e_gestor = df_e_sub[df_e_sub['sub'] == e_sub] if e_sub else df_e_sub
+                
+                e_gestor = st.selectbox("Gestor (Entrada):", options=[""] + sorted([x for x in df_e_gestor['gestor'].unique() if x]))
+                df_e_posto = df_e_gestor[df_e_gestor['gestor'] == e_gestor] if e_gestor else df_e_gestor
+                
+                e_posto = st.selectbox("Posto (Entrada):", options=[""] + sorted([x for x in df_e_posto['posto'].unique() if x]))
+                df_e_cargo = df_e_posto[df_e_posto['posto'] == e_posto] if e_posto else df_e_posto
+                
+                e_cargo = st.selectbox("Cargo (Entrada):", options=[""] + sorted([x for x in df_e_cargo['cargo'].unique() if x]))
+                
+                e_qtd = st.number_input("Quantidade (Entrada):", min_value=1, value=1, step=1)
+                
+                # Botão Faltou Posto (Laranja)
+                st.markdown("<div id='btn-posto'></div>", unsafe_allow_html=True)
+                if st.button("Não encontrou o posto? Clique aqui!", use_container_width=True):
+                    modal_solicitar_posto()
 
-                with e_c2:
-                    df_e_gestor = df_e_sub[df_e_sub['sub'] == e_sub] if e_sub else df_e_sub
-                    e_gestor = st.selectbox("Gestor (Entrada):", options=[""] + sorted([x for x in df_e_gestor['gestor'].unique() if x]))
-                    
-                    df_e_posto = df_e_gestor[df_e_gestor['gestor'] == e_gestor] if e_gestor else df_e_gestor
-                    e_posto = st.selectbox("Posto (Entrada):", options=[""] + sorted([x for x in df_e_posto['posto'].unique() if x]))
-                    
-                    df_e_cargo = df_e_posto[df_e_posto['posto'] == e_posto] if e_posto else df_e_posto
-                    e_cargo = st.selectbox("Cargo (Entrada):", options=[""] + sorted([x for x in df_e_cargo['cargo'].unique() if x]))
-                    
-                    # BOTÃO LARANJA (Abaixo do Cargo, no canto direito da tela)
-                    st.write("")
-                    if st.button("Não encontrou o posto? Clique aqui!", use_container_width=True):
-                        modal_solicitar_posto()
-
-        # ==== BOTÃO SALVAR ====
+        st.write("")
+        
+        # ==== BOTÃO SALVAR (Verde Primário) ====
         if st.button("CONFIRMAR MOVIMENTAÇÃO", type="primary", use_container_width=True):
             if not requisitante:
                 st.warning("O campo Requisitante é obrigatório.")
@@ -328,7 +335,7 @@ else:
     # --- TELA DE CONSULTA ---
     elif st.session_state.pagina == 'consulta':
         conn = conectar_banco()
-        # CC Entrada e CC Saída incluídos no Grid
+        # Incluindo CC_Saida e CC_Entrada
         df_historico = pd.read_sql_query(f'''
             SELECT id, data_registro, requisitante, 
                    cc_saida, qtd_saida, cargo_saida, 
