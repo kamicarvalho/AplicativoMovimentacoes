@@ -19,6 +19,7 @@ st.set_page_config(page_title="Movimentações - Headcount", layout="wide", init
 # ==========================================
 # 2. CONEXÃO COM O SUPABASE (NUVEM) E FUSO
 # ==========================================
+# Fuso horário de Brasília (Garante que a hora do registro saia correta)
 fuso_br = timezone(timedelta(hours=-3))
 
 @st.cache_resource
@@ -101,7 +102,7 @@ def renderizar_logo(tamanho=180):
             st.markdown(f'<div style="text-align: center; margin-bottom: 10px;"><img src="data:image/png;base64,{encoded}" width="{tamanho}"></div>', unsafe_allow_html=True)
 
 # ==========================================
-# 5. CONTROLE DE SESSÃO
+# 5. CONTROLE DE SESSÃO E MEMÓRIA
 # ==========================================
 if 'usuario_logado' not in st.session_state:
     st.session_state.usuario_logado = None
@@ -153,12 +154,11 @@ def modal_solicitar_posto():
                     }
                     supabase.table("solicitacoes_postos").insert(dados_solicitacao).execute()
                     
-                    # 2. DISPARA O E-MAIL PARA O RH
+                    # 2. DISPARA O E-MAIL PARA O RH (SUPORTA VÁRIOS E-MAILS)
                     try:
                         remetente = st.secrets["EMAIL_REMETENTE"]
-                        # Por garantia, o código remove qualquer espaço em branco na senha
                         senha = st.secrets["SENHA_REMETENTE"].replace(" ", "")
-                        destinatario = st.secrets["EMAIL_RH"]
+                        destinatario = st.secrets["EMAIL_RH"] # Pode conter vários emails separados por vírgula
                         servidor_smtp = st.secrets["SERVIDOR_SMTP"]
                         
                         msg = MIMEMultipart()
@@ -187,10 +187,13 @@ Mensagem automática do Sistema de Headcount.
 """
                         msg.attach(MIMEText(corpo_email, 'plain'))
                         
+                        # Transforma a string com vários emails em uma lista para o Python enviar a todos
+                        lista_destinatarios = [email.strip() for email in destinatario.split(',')]
+                        
                         server = smtplib.SMTP(servidor_smtp, 587)
                         server.starttls()
                         server.login(remetente, senha)
-                        server.send_message(msg)
+                        server.sendmail(remetente, lista_destinatarios, msg.as_string())
                         server.quit()
                         email_sucesso = True
                     except Exception as email_err:
@@ -224,6 +227,7 @@ if st.session_state.usuario_logado is None:
             st.markdown("<h3 style='text-align: center; color: black;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
             st.write("<br>", unsafe_allow_html=True)
             
+            # Formulário para aceitar o "ENTER" do teclado
             with st.form("form_login", clear_on_submit=False):
                 usuario = st.text_input("Usuário")
                 senha = st.text_input("Senha", type="password")
@@ -279,6 +283,7 @@ else:
         # ==== LADO ESQUERDO: SAÍDA ====
         with col_saida:
             with st.container(border=True):
+                # TÍTULO COM FUNDO VERMELHO PASTEL
                 st.markdown("""
                 <div style="background-color: #fff5f5; border: 2px solid #ffcdd2; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
                     <h4 style="text-align: center; color: #b71c1c; margin: 0;">VAGA DE SAÍDA (RETIRADA)</h4>
@@ -301,6 +306,7 @@ else:
         # ==== LADO DIREITO: ENTRADA ====
         with col_entrada:
             with st.container(border=True):
+                # TÍTULO COM FUNDO VERDE PASTEL
                 st.markdown("""
                 <div style="background-color: #f1f8e9; border: 2px solid #c8e6c9; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
                     <h4 style="text-align: center; color: #1b5e20; margin: 0;">VAGA DE ENTRADA (NOVA)</h4>
@@ -358,10 +364,12 @@ else:
     # --- TELA DE CONSULTA (DO SUPABASE) ---
     elif st.session_state.pagina == 'consulta':
         try:
+            # Consulta as movimentações no Supabase
             resposta = supabase.table("movimentacoes").select("*").eq("usuario_sistema", st.session_state.usuario_logado).order("id", desc=True).execute()
             df_historico = pd.DataFrame(resposta.data)
             
             if not df_historico.empty:
+                # Ordena e insere a coluna do usuário admin
                 df_historico = df_historico[['id', 'data_registro', 'usuario_sistema', 'requisitante', 'cc_saida', 'qtd_saida', 'cargo_saida', 'cc_entrada', 'qtd_entrada', 'cargo_entrada']]
                 df_historico.columns = ["ID", "Data", "Usuário", "Requisitante", "CC Saída", "Qtd Saída", "Cargo Saída", "CC Entrada", "Qtd Entrada", "Cargo Entrada"]
                 df_historico['Data'] = pd.to_datetime(df_historico['Data']).dt.strftime('%d/%m/%Y %H:%M')
@@ -379,6 +387,7 @@ else:
 
             st.markdown("#### Suas Movimentações Cadastradas")
             
+            # Formatação colorida inteligente do Pandas
             def colorir_tabela(coluna):
                 if coluna.name in ["CC Saída", "Qtd Saída", "Cargo Saída"]:
                     return ['background-color: #ffebee; color: #b71c1c'] * len(coluna)
