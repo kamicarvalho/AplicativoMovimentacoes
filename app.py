@@ -1,12 +1,12 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-import sqlite3
 from datetime import datetime, timedelta, timezone
 import os
 import openpyxl
 import base64
 import time
+from supabase import create_client, Client
 
 # ==========================================
 # 1. CONFIGURAÇÕES DA PÁGINA
@@ -14,23 +14,29 @@ import time
 st.set_page_config(page_title="Movimentações - Headcount", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 2. FUSO HORÁRIO (CORREÇÃO PARA BRASIL)
+# 2. CONEXÃO COM O SUPABASE (NUVEM) E FUSO
 # ==========================================
 fuso_br = timezone(timedelta(hours=-3))
 
+@st.cache_resource
+def init_connection() -> Client:
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+supabase = init_connection()
+
 # ==========================================
-# 3. O MOTOR JAVASCRIPT (Cores dos Botões)
+# 3. O MOTOR JAVASCRIPT (Cores e Botões)
 # ==========================================
 js_code = """
 <script>
 const parentDoc = window.parent.document;
 
 function aplicarEstilos() {
-    // Ocultar a barra superior do Streamlit
     const header = parentDoc.querySelector('header');
     if(header) header.style.display = 'none';
 
-    // Ajuste de tela (Aproveitamento de espaço)
     const mainBlock = parentDoc.querySelector('.block-container');
     if(mainBlock) {
         mainBlock.style.paddingTop = '1.5rem';
@@ -38,35 +44,23 @@ function aplicarEstilos() {
         mainBlock.style.maxWidth = '98%';
     }
 
-    // Deixar os campos em cascata mais juntos
     const blocos = parentDoc.querySelectorAll('div[data-testid="stVerticalBlock"]');
     blocos.forEach(b => b.style.gap = '0.1rem');
 
-    // PINTAR OS BOTÕES
     const botoes = parentDoc.querySelectorAll('button');
     botoes.forEach(btn => {
         const txt = btn.innerText.trim();
-        
         if(txt === '✅ CONFIRMAR MOVIMENTAÇÃO') {
-            btn.style.backgroundColor = '#2e7d32'; // Verde
-            btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
-        } 
-        else if(txt === 'Ver Histórico (Consultas)' || txt === 'Nova Movimentação' || txt === 'ACESSAR SISTEMA' || txt === 'ENVIAR SOLICITAÇÃO') {
-            btn.style.backgroundColor = '#1976d2'; // Azul
-            btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
-        } 
-        else if(txt === 'Sair') {
-            btn.style.backgroundColor = '#d32f2f'; // Vermelho
-            btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
-        } 
-        else if(txt.includes('Não encontrou o posto?')) {
-            btn.style.backgroundColor = '#ff9800'; // Laranja
-            btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
+            btn.style.backgroundColor = '#2e7d32'; btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
+        } else if(txt === 'Ver Histórico (Consultas)' || txt === 'Nova Movimentação' || txt === 'ACESSAR SISTEMA' || txt === 'ENVIAR SOLICITAÇÃO') {
+            btn.style.backgroundColor = '#1976d2'; btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
+        } else if(txt === 'Sair') {
+            btn.style.backgroundColor = '#d32f2f'; btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
+        } else if(txt.includes('Não encontrou o posto?')) {
+            btn.style.backgroundColor = '#ff9800'; btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
         }
     });
 }
-
-// Executa e vigia a tela para não perder a cor
 aplicarEstilos();
 const observer = new MutationObserver(aplicarEstilos);
 observer.observe(parentDoc.body, { childList: true, subtree: true });
@@ -81,24 +75,8 @@ USUARIOS_PERMITIDOS = {
 }
 
 # ==========================================
-# 4. BANCO DE DADOS E EXCEL
+# 4. LER EXCEL (PARÂMETROS)
 # ==========================================
-def conectar_banco():
-    conn = sqlite3.connect('headcount_v3.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS movimentacoes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_sistema TEXT, data_registro TEXT, requisitante TEXT,
-            unidade_saida TEXT, cc_saida TEXT, subprocesso_saida TEXT,
-            gestor_saida TEXT, posto_saida TEXT, cargo_saida TEXT, qtd_saida INTEGER,
-            unidade_entrada TEXT, cc_entrada TEXT, subprocesso_entrada TEXT,
-            gestor_entrada TEXT, posto_entrada TEXT, cargo_entrada TEXT, qtd_entrada INTEGER
-        )
-    ''')
-    conn.commit()
-    return conn
-
 @st.cache_data
 def carregar_dados_excel():
     arquivo_excel = 'parametros.xlsx'
@@ -120,7 +98,7 @@ def renderizar_logo(tamanho=180):
             st.markdown(f'<div style="text-align: center; margin-bottom: 10px;"><img src="data:image/png;base64,{encoded}" width="{tamanho}"></div>', unsafe_allow_html=True)
 
 # ==========================================
-# 5. CONTROLE DE SESSÃO E MEMÓRIA DE SUCESSO
+# 5. CONTROLE DE SESSÃO
 # ==========================================
 if 'usuario_logado' not in st.session_state:
     st.session_state.usuario_logado = None
@@ -144,13 +122,10 @@ def modal_solicitar_posto():
     
     und_p = st.selectbox("Unidade:", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None)
     df_cc_p = df_parametros[df_parametros['unidade'] == und_p] if und_p else pd.DataFrame(columns=df_parametros.columns)
-    
     cc_p = st.selectbox("Centro de Custo:", options=sorted([x for x in df_cc_p['cc'].unique() if x]), index=None)
     df_sub_p = df_cc_p[df_cc_p['cc'] == cc_p] if cc_p else pd.DataFrame(columns=df_parametros.columns)
-    
     sub_p = st.selectbox("Subprocesso:", options=sorted([x for x in df_sub_p['sub'].unique() if x]), index=None)
     df_gestor_p = df_sub_p[df_sub_p['sub'] == sub_p] if sub_p else pd.DataFrame(columns=df_parametros.columns)
-    
     gestor_p = st.selectbox("Gestor:", options=sorted([x for x in df_gestor_p['gestor'].unique() if x]), index=None)
     cargo_p = st.selectbox("Qual Cargo deve pertencer a esse posto?:", options=sorted([x for x in df_parametros['cargo'].unique() if x]), index=None)
 
@@ -191,7 +166,6 @@ if st.session_state.usuario_logado is None:
         with st.container(border=True):
             st.write("<br>", unsafe_allow_html=True)
             renderizar_logo(180)
-            
             st.markdown("<h3 style='text-align: center; color: black;'>Movimentações<br>HeadCount</h3>", unsafe_allow_html=True)
             st.write("<br>", unsafe_allow_html=True)
             
@@ -211,7 +185,6 @@ if st.session_state.usuario_logado is None:
 
 # --- TELAS INTERNAS ---
 else:
-    # CABEÇALHO 
     col_titulo, col_user, col_btn1, col_btn2 = st.columns([4, 2, 2, 1.5])
     
     with col_titulo:
@@ -242,7 +215,6 @@ else:
             st.session_state.sucesso_movimentacao = False 
         
         fk = st.session_state.form_key 
-        
         lista_req = sorted([x for x in df_parametros['requisitante'].unique() if x])
         requisitante = st.selectbox("Quem solicitou a troca? (Pode digitar para pesquisar)", options=lista_req, index=None, placeholder="Selecione o requisitante...", key=f"req_{fk}")
 
@@ -260,19 +232,14 @@ else:
                 
                 s_und = st.selectbox("Unidade (Saída):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, key=f"s_und_{fk}")
                 df_s_cc = df_parametros[df_parametros['unidade'] == s_und] if s_und else pd.DataFrame(columns=df_parametros.columns)
-                
                 s_cc = st.selectbox("Centro de Custo (Saída):", options=sorted([x for x in df_s_cc['cc'].unique() if x]), index=None, key=f"s_cc_{fk}")
                 df_s_sub = df_s_cc[df_s_cc['cc'] == s_cc] if s_cc else pd.DataFrame(columns=df_parametros.columns)
-                
                 s_sub = st.selectbox("Subprocesso (Saída):", options=sorted([x for x in df_s_sub['sub'].unique() if x]), index=None, key=f"s_sub_{fk}")
                 df_s_gestor = df_s_sub[df_s_sub['sub'] == s_sub] if s_sub else pd.DataFrame(columns=df_parametros.columns)
-                
                 s_gestor = st.selectbox("Gestor (Saída):", options=sorted([x for x in df_s_gestor['gestor'].unique() if x]), index=None, key=f"s_gestor_{fk}")
                 df_s_posto = df_s_gestor[df_s_gestor['gestor'] == s_gestor] if s_gestor else pd.DataFrame(columns=df_parametros.columns)
-                
                 s_posto = st.selectbox("Posto (Saída):", options=sorted([x for x in df_s_posto['posto'].unique() if x]), index=None, key=f"s_posto_{fk}")
                 df_s_cargo = df_s_posto[df_s_posto['posto'] == s_posto] if s_posto else pd.DataFrame(columns=df_parametros.columns)
-                
                 s_cargo = st.selectbox("Cargo (Saída):", options=sorted([x for x in df_s_cargo['cargo'].unique() if x]), index=None, key=f"s_cargo_{fk}")
                 s_qtd = st.number_input("Quantidade (Saída):", min_value=1, value=1, step=1, key=f"s_qtd_{fk}")
 
@@ -287,19 +254,14 @@ else:
                 
                 e_und = st.selectbox("Unidade (Entrada):", options=sorted([x for x in df_parametros['unidade'].unique() if x]), index=None, key=f"e_und_{fk}")
                 df_e_cc = df_parametros[df_parametros['unidade'] == e_und] if e_und else pd.DataFrame(columns=df_parametros.columns)
-                
                 e_cc = st.selectbox("Centro de Custo (Entrada):", options=sorted([x for x in df_e_cc['cc'].unique() if x]), index=None, key=f"e_cc_{fk}")
                 df_e_sub = df_e_cc[df_e_cc['cc'] == e_cc] if e_cc else pd.DataFrame(columns=df_parametros.columns)
-                
                 e_sub = st.selectbox("Subprocesso (Entrada):", options=sorted([x for x in df_e_sub['sub'].unique() if x]), index=None, key=f"e_sub_{fk}")
                 df_e_gestor = df_e_sub[df_e_sub['sub'] == e_sub] if e_sub else pd.DataFrame(columns=df_parametros.columns)
-                
                 e_gestor = st.selectbox("Gestor (Entrada):", options=sorted([x for x in df_e_gestor['gestor'].unique() if x]), index=None, key=f"e_gestor_{fk}")
                 df_e_posto = df_e_gestor[df_e_gestor['gestor'] == e_gestor] if e_gestor else pd.DataFrame(columns=df_parametros.columns)
-                
                 e_posto = st.selectbox("Posto (Entrada):", options=sorted([x for x in df_e_posto['posto'].unique() if x]), index=None, key=f"e_posto_{fk}")
                 df_e_cargo = df_e_posto[df_e_posto['posto'] == e_posto] if e_posto else pd.DataFrame(columns=df_parametros.columns)
-                
                 e_cargo = st.selectbox("Cargo (Entrada):", options=sorted([x for x in df_e_cargo['cargo'].unique() if x]), index=None, key=f"e_cargo_{fk}")
                 e_qtd = st.number_input("Quantidade (Entrada):", min_value=1, value=1, step=1, key=f"e_qtd_{fk}")
                 
@@ -309,76 +271,77 @@ else:
 
         st.write("")
         
-        # ==== BOTÃO SALVAR ====
+        # ==== BOTÃO SALVAR (AGORA SALVA DIRETO NA NUVEM / SUPABASE) ====
         if st.button("✅ CONFIRMAR MOVIMENTAÇÃO", use_container_width=True):
             if not requisitante:
                 st.warning("⚠️ O campo Requisitante é obrigatório.")
             elif not all([s_und, s_cc, s_sub, s_gestor, s_posto, s_cargo, e_und, e_cc, e_sub, e_gestor, e_posto, e_cargo]):
                 st.warning("⚠️ Preencha todas as caixas de Saída e Entrada antes de salvar.")
             else:
-                conn = conectar_banco()
-                cursor = conn.cursor()
-                data_atual = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
+                data_atual = datetime.now(fuso_br).isoformat()
                 
-                cursor.execute('''
-                    INSERT INTO movimentacoes (
-                        usuario_sistema, data_registro, requisitante,
-                        unidade_saida, cc_saida, subprocesso_saida, gestor_saida, posto_saida, cargo_saida, qtd_saida,
-                        unidade_entrada, cc_entrada, subprocesso_entrada, gestor_entrada, posto_entrada, cargo_entrada, qtd_entrada
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    st.session_state.usuario_logado, data_atual, requisitante,
-                    s_und, s_cc, s_sub, s_gestor, s_posto, s_cargo, s_qtd,
-                    e_und, e_cc, e_sub, e_gestor, e_posto, e_cargo, e_qtd
-                ))
-                conn.commit()
-
+                # Monta os dados para o Supabase
+                dados_movimentacao = {
+                    "usuario_sistema": st.session_state.usuario_logado,
+                    "data_registro": data_atual,
+                    "requisitante": requisitante,
+                    "unidade_saida": s_und, "cc_saida": s_cc, "subprocesso_saida": s_sub,
+                    "gestor_saida": s_gestor, "posto_saida": s_posto, "cargo_saida": s_cargo, "qtd_saida": s_qtd,
+                    "unidade_entrada": e_und, "cc_entrada": e_cc, "subprocesso_entrada": e_sub,
+                    "gestor_entrada": e_gestor, "posto_entrada": e_posto, "cargo_entrada": e_cargo, "qtd_entrada": e_qtd
+                }
+                
                 try:
-                    df_espelho = pd.read_sql_query("SELECT * FROM movimentacoes", conn)
-                    df_espelho.to_excel('base_powerbi.xlsx', index=False, engine='openpyxl')
+                    # Envia os dados para a Tabela "movimentacoes" no Supabase
+                    supabase.table("movimentacoes").insert(dados_movimentacao).execute()
+                    
+                    st.session_state.sucesso_movimentacao = True
+                    st.session_state.form_key += 1 
+                    st.rerun()
                 except Exception as e:
-                    st.error(f"Erro ao gerar espelho Excel: {e}")
+                    st.error(f"Erro ao salvar na nuvem: {e}")
 
-                conn.close()
-                
-                st.session_state.sucesso_movimentacao = True
-                st.session_state.form_key += 1 
-                st.rerun()
-
-    # --- TELA DE CONSULTA ---
+    # --- TELA DE CONSULTA (PUXANDO DO SUPABASE) ---
     elif st.session_state.pagina == 'consulta':
-        conn = conectar_banco()
-        
-        # AQUI FOI ADICIONADO O "usuario_sistema" (O Admin logado) NA CONSULTA
-        df_historico = pd.read_sql_query(f'''
-            SELECT id, data_registro, usuario_sistema, requisitante, 
-                   cc_saida, qtd_saida, cargo_saida, 
-                   cc_entrada, qtd_entrada, cargo_entrada 
-            FROM movimentacoes 
-            WHERE usuario_sistema = '{st.session_state.usuario_logado}' 
-            ORDER BY id DESC
-        ''', conn)
-        conn.close()
-        
-        # O nome da coluna "usuario_sistema" foi renomeado para "Usuário" para ficar bonito na tela
-        df_historico.columns = ["ID", "Data", "Usuário", "Requisitante", "CC Saída", "Qtd Saída", "Cargo Saída", "CC Entrada", "Qtd Entrada", "Cargo Entrada"]
-
-        total = len(df_historico)
-        ultima = df_historico['Data'].iloc[0] if total > 0 else "-"
-
-        col_metric1, col_metric2 = st.columns(2)
-        col_metric1.metric("TOTAL REGISTRADO", total)
-        col_metric2.metric("ÚLTIMA MOVIMENTAÇÃO", ultima)
-
-        st.markdown("#### Suas Movimentações Cadastradas")
-        
-        def colorir_tabela(coluna):
-            if coluna.name in ["CC Saída", "Qtd Saída", "Cargo Saída"]:
-                return ['background-color: #ffebee; color: #b71c1c'] * len(coluna)
-            elif coluna.name in ["CC Entrada", "Qtd Entrada", "Cargo Entrada"]:
-                return ['background-color: #e8f5e9; color: #1b5e20'] * len(coluna)
-            else:
-                return [''] * len(coluna)
+        try:
+            # Puxa os dados direto do Supabase
+            resposta = supabase.table("movimentacoes").select("*").eq("usuario_sistema", st.session_state.usuario_logado).order("id", desc=True).execute()
+            df_historico = pd.DataFrame(resposta.data)
+            
+            if not df_historico.empty:
+                # Organiza as colunas e formata a data para ficar bonita na tela
+                df_historico = df_historico[['id', 'data_registro', 'usuario_sistema', 'requisitante', 'cc_saida', 'qtd_saida', 'cargo_saida', 'cc_entrada', 'qtd_entrada', 'cargo_entrada']]
+                df_historico.columns = ["ID", "Data", "Usuário", "Requisitante", "CC Saída", "Qtd Saída", "Cargo Saída", "CC Entrada", "Qtd Entrada", "Cargo Entrada"]
                 
-        df_estilizado = df_historico.style.apply(colorir_tabela)
-        st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
+                # Arruma a data para o formato Brasileiro
+                df_historico['Data'] = pd.to_datetime(df_historico['Data']).dt.strftime('%d/%m/%Y %H:%M')
+
+                total = len(df_historico)
+                ultima = df_historico['Data'].iloc[0]
+            else:
+                df_historico = pd.DataFrame(columns=["ID", "Data", "Usuário", "Requisitante", "CC Saída", "Qtd Saída", "Cargo Saída", "CC Entrada", "Qtd Entrada", "Cargo Entrada"])
+                total = 0
+                ultima = "-"
+
+            col_metric1, col_metric2 = st.columns(2)
+            col_metric1.metric("TOTAL REGISTRADO", total)
+            col_metric2.metric("ÚLTIMA MOVIMENTAÇÃO", ultima)
+
+            st.markdown("#### Suas Movimentações Cadastradas")
+            
+            def colorir_tabela(coluna):
+                if coluna.name in ["CC Saída", "Qtd Saída", "Cargo Saída"]:
+                    return ['background-color: #ffebee; color: #b71c1c'] * len(coluna)
+                elif coluna.name in ["CC Entrada", "Qtd Entrada", "Cargo Entrada"]:
+                    return ['background-color: #e8f5e9; color: #1b5e20'] * len(coluna)
+                else:
+                    return [''] * len(coluna)
+                    
+            if total > 0:
+                df_estilizado = df_historico.style.apply(colorir_tabela)
+                st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
+            else:
+                st.info("Você ainda não possui movimentações registradas.")
+                
+        except Exception as e:
+            st.error(f"Erro ao conectar com o banco de dados: {e}")
