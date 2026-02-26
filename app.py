@@ -17,9 +17,8 @@ from email.mime.multipart import MIMEMultipart
 st.set_page_config(page_title="Movimentações - Headcount", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 2. CONEXÃO COM O SUPABASE (NUVEM) E FUSO
+# 2. CONEXÃO COM O SUPABASE E FUSO
 # ==========================================
-# Fuso horário de Brasília (Garante que a hora do registro saia correta)
 fuso_br = timezone(timedelta(hours=-3))
 
 @st.cache_resource
@@ -31,7 +30,7 @@ def init_connection() -> Client:
 supabase = init_connection()
 
 # ==========================================
-# 3. O MOTOR JAVASCRIPT (Cores e Botões)
+# 3. O MOTOR JAVASCRIPT (Versão Segura - Anti-travamento)
 # ==========================================
 js_code = """
 <script>
@@ -65,21 +64,24 @@ function aplicarEstilos() {
         }
     });
 }
-aplicarEstilos();
-const observer = new MutationObserver(aplicarEstilos);
-observer.observe(parentDoc.body, { childList: true, subtree: true });
+
+// Verifica e aplica as cores a cada 500ms
+setInterval(aplicarEstilos, 500);
 </script>
 """
 components.html(js_code, height=0, width=0)
 
-USUARIOS_PERMITIDOS = {
-    "admin": "admin123",
-    "rh.agricola": "cana2026",
-    "analista": "senha123"
-}
+# ==========================================
+# 4. PUXANDO USUÁRIOS DO COFRE DE SEGREDOS
+# ==========================================
+try:
+    USUARIOS_PERMITIDOS = dict(st.secrets["usuarios"])
+except KeyError:
+    st.error("Erro Crítico: A seção [usuarios] não foi encontrada nos Secrets do Streamlit.")
+    USUARIOS_PERMITIDOS = {}
 
 # ==========================================
-# 4. LER EXCEL (PARÂMETROS LOCAIS)
+# 5. LER EXCEL (PARÂMETROS LOCAIS)
 # ==========================================
 @st.cache_data
 def carregar_dados_excel():
@@ -102,7 +104,7 @@ def renderizar_logo(tamanho=180):
             st.markdown(f'<div style="text-align: center; margin-bottom: 10px;"><img src="data:image/png;base64,{encoded}" width="{tamanho}"></div>', unsafe_allow_html=True)
 
 # ==========================================
-# 5. CONTROLE DE SESSÃO E MEMÓRIA
+# 6. CONTROLE DE SESSÃO E MEMÓRIA
 # ==========================================
 if 'usuario_logado' not in st.session_state:
     st.session_state.usuario_logado = None
@@ -118,7 +120,7 @@ def fazer_logout():
     st.session_state.pagina = 'login'
 
 # ==========================================
-# 6. MODAL: CADASTRAR POSTO FALTANTE E E-MAIL
+# 7. MODAL: CADASTRAR POSTO FALTANTE E E-MAIL
 # ==========================================
 @st.dialog("Cadastro Posto faltante")
 def modal_solicitar_posto():
@@ -154,7 +156,7 @@ def modal_solicitar_posto():
                     }
                     supabase.table("solicitacoes_postos").insert(dados_solicitacao).execute()
                     
-                    # 2. DISPARA O E-MAIL PARA O RH E CAPTURA O ERRO REAL
+                    # 2. DISPARA O E-MAIL
                     erro_real_do_email = ""
                     try:
                         remetente = st.secrets["EMAIL_REMETENTE"]
@@ -205,8 +207,8 @@ Mensagem automática do Sistema de Headcount.
                         st.success("✅ Solicitação salva no Supabase e E-mail enviado com sucesso!")
                         time.sleep(2)
                     else:
-                        st.warning(f"⚠️ Salvo no Supabase, mas falhou ao enviar e-mail. ERRO DO GOOGLE: {erro_real_do_email}")
-                        time.sleep(6) # Espera 6 segundos para dar tempo de ler a mensagem amarela
+                        st.warning(f"⚠️ Salvo no Supabase, mas falhou ao enviar e-mail. ERRO: {erro_real_do_email}")
+                        time.sleep(6)
                     
                     st.rerun()
 
@@ -214,7 +216,7 @@ Mensagem automática do Sistema de Headcount.
                     st.error(f"Erro ao salvar na nuvem (Supabase): {e}")
 
 # ==========================================
-# 7. TELAS DO APLICATIVO
+# 8. TELAS DO APLICATIVO
 # ==========================================
 
 # --- TELA DE LOGIN ---
@@ -350,7 +352,6 @@ else:
                         "gestor_entrada": e_gestor, "posto_entrada": e_posto, "cargo_entrada": e_cargo, "qtd_entrada": e_qtd
                     }
                     
-                    # INSERE NA NUVEM (SUPABASE)
                     supabase.table("movimentacoes").insert(dados_movimentacao).execute()
                     
                     st.session_state.sucesso_movimentacao = True
