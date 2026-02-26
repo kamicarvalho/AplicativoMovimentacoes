@@ -7,6 +7,9 @@ import openpyxl
 import base64
 import time
 from supabase import create_client, Client
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # ==========================================
 # 1. CONFIGURAÇÕES DA PÁGINA
@@ -75,7 +78,7 @@ USUARIOS_PERMITIDOS = {
 }
 
 # ==========================================
-# 4. LER EXCEL (PARÂMETROS)
+# 4. LER EXCEL (PARÂMETROS LOCAIS)
 # ==========================================
 @st.cache_data
 def carregar_dados_excel():
@@ -114,7 +117,7 @@ def fazer_logout():
     st.session_state.pagina = 'login'
 
 # ==========================================
-# 6. MODAL: CADASTRAR POSTO FALTANTE
+# 6. MODAL: CADASTRAR POSTO FALTANTE E E-MAIL
 # ==========================================
 @st.dialog("Cadastro Posto faltante")
 def modal_solicitar_posto():
@@ -134,25 +137,77 @@ def modal_solicitar_posto():
         if not all([und_p, cc_p, sub_p, gestor_p, cargo_p]):
             st.error("Por favor, preencha todos os campos antes de enviar.")
         else:
-            arquivo_solicitacoes = "solicitacoes_postos.xlsx"
-            try:
-                if os.path.exists(arquivo_solicitacoes):
-                    wb = openpyxl.load_workbook(arquivo_solicitacoes)
-                    ws = wb.active
-                else:
-                    wb = openpyxl.Workbook()
-                    ws = wb.active
-                    ws.append(["Data Solicitação", "Usuário", "Unidade", "Centro de Custo", "Subprocesso", "Gestor", "Cargo"])
-                
-                data_atual = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
-                ws.append([data_atual, st.session_state.usuario_logado, und_p, cc_p, sub_p, gestor_p, cargo_p])
-                wb.save(arquivo_solicitacoes)
-                
-                st.success("✅ Solicitação salva com sucesso!")
-                time.sleep(1.5)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao salvar: {e}")
+            with st.spinner("Salvando no banco e enviando e-mail para o RH..."):
+                try:
+                    data_atual = datetime.now(fuso_br).isoformat()
+                    
+                    # 1. SALVA NO SUPABASE
+                    dados_solicitacao = {
+                        "data_solicitacao": data_atual,
+                        "usuario": st.session_state.usuario_logado,
+                        "unidade": und_p,
+                        "centro_custo": cc_p,
+                        "subprocesso": sub_p,
+                        "gestor": gestor_p,
+                        "cargo": cargo_p
+                    }
+                    supabase.table("solicitacoes_postos").insert(dados_solicitacao).execute()
+                    
+                    # 2. DISPARA O E-MAIL PARA O RH
+                    try:
+                        remetente = st.secrets["EMAIL_REMETENTE"]
+                        # Por garantia, o código remove qualquer espaço em branco na senha
+                        senha = st.secrets["SENHA_REMETENTE"].replace(" ", "")
+                        destinatario = st.secrets["EMAIL_RH"]
+                        servidor_smtp = st.secrets["SERVIDOR_SMTP"]
+                        
+                        msg = MIMEMultipart()
+                        msg['From'] = remetente
+                        msg['To'] = destinatario
+                        msg['Subject'] = "🚨 Nova Solicitação de Posto Faltante - Headcount"
+                        
+                        corpo_email = f"""
+Olá equipe do RH,
+
+Uma nova solicitação de criação de posto foi registrada no sistema de Movimentações de Headcount.
+
+Detalhes da Solicitação:
+--------------------------------------------------
+- Solicitante: {st.session_state.usuario_logado}
+- Unidade: {und_p}
+- Centro de Custo: {cc_p}
+- Subprocesso: {sub_p}
+- Gestor Associado: {gestor_p}
+- Cargo que ocupará o posto: {cargo_p}
+--------------------------------------------------
+
+Por favor, providencie o cadastro do posto no sistema oficial para que a movimentação possa ser concluída.
+
+Mensagem automática do Sistema de Headcount.
+"""
+                        msg.attach(MIMEText(corpo_email, 'plain'))
+                        
+                        server = smtplib.SMTP(servidor_smtp, 587)
+                        server.starttls()
+                        server.login(remetente, senha)
+                        server.send_message(msg)
+                        server.quit()
+                        email_sucesso = True
+                    except Exception as email_err:
+                        print(f"Erro no email: {email_err}")
+                        email_sucesso = False
+
+                    # 3. FEEDBACK FINAL
+                    if email_sucesso:
+                        st.success("✅ Solicitação salva no Supabase e E-mail enviado com sucesso!")
+                    else:
+                        st.warning("⚠️ Salvo no Supabase, mas falhou ao enviar o e-mail (Verifique a senha de app).")
+                    
+                    time.sleep(2)
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"Erro ao salvar na nuvem (Supabase): {e}")
 
 # ==========================================
 # 7. TELAS DO APLICATIVO
@@ -211,7 +266,7 @@ else:
     if st.session_state.pagina == 'registro':
         
         if st.session_state.sucesso_movimentacao:
-            st.success("✅ Movimentação registrada com sucesso!")
+            st.success("✅ Movimentação registrada com sucesso na nuvem!")
             st.session_state.sucesso_movimentacao = False 
         
         fk = st.session_state.form_key 
@@ -271,49 +326,44 @@ else:
 
         st.write("")
         
-        # ==== BOTÃO SALVAR (AGORA SALVA DIRETO NA NUVEM / SUPABASE) ====
+        # ==== BOTÃO SALVAR (NO SUPABASE) ====
         if st.button("✅ CONFIRMAR MOVIMENTAÇÃO", use_container_width=True):
             if not requisitante:
                 st.warning("⚠️ O campo Requisitante é obrigatório.")
             elif not all([s_und, s_cc, s_sub, s_gestor, s_posto, s_cargo, e_und, e_cc, e_sub, e_gestor, e_posto, e_cargo]):
                 st.warning("⚠️ Preencha todas as caixas de Saída e Entrada antes de salvar.")
             else:
-                data_atual = datetime.now(fuso_br).isoformat()
-                
-                # Monta os dados para o Supabase
-                dados_movimentacao = {
-                    "usuario_sistema": st.session_state.usuario_logado,
-                    "data_registro": data_atual,
-                    "requisitante": requisitante,
-                    "unidade_saida": s_und, "cc_saida": s_cc, "subprocesso_saida": s_sub,
-                    "gestor_saida": s_gestor, "posto_saida": s_posto, "cargo_saida": s_cargo, "qtd_saida": s_qtd,
-                    "unidade_entrada": e_und, "cc_entrada": e_cc, "subprocesso_entrada": e_sub,
-                    "gestor_entrada": e_gestor, "posto_entrada": e_posto, "cargo_entrada": e_cargo, "qtd_entrada": e_qtd
-                }
-                
                 try:
-                    # Envia os dados para a Tabela "movimentacoes" no Supabase
+                    data_atual = datetime.now(fuso_br).isoformat()
+                    
+                    dados_movimentacao = {
+                        "usuario_sistema": st.session_state.usuario_logado,
+                        "data_registro": data_atual,
+                        "requisitante": requisitante,
+                        "unidade_saida": s_und, "cc_saida": s_cc, "subprocesso_saida": s_sub,
+                        "gestor_saida": s_gestor, "posto_saida": s_posto, "cargo_saida": s_cargo, "qtd_saida": s_qtd,
+                        "unidade_entrada": e_und, "cc_entrada": e_cc, "subprocesso_entrada": e_sub,
+                        "gestor_entrada": e_gestor, "posto_entrada": e_posto, "cargo_entrada": e_cargo, "qtd_entrada": e_qtd
+                    }
+                    
+                    # INSERE NA NUVEM (SUPABASE)
                     supabase.table("movimentacoes").insert(dados_movimentacao).execute()
                     
                     st.session_state.sucesso_movimentacao = True
                     st.session_state.form_key += 1 
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Erro ao salvar na nuvem: {e}")
+                    st.error(f"Erro ao salvar no Supabase: {e}")
 
-    # --- TELA DE CONSULTA (PUXANDO DO SUPABASE) ---
+    # --- TELA DE CONSULTA (DO SUPABASE) ---
     elif st.session_state.pagina == 'consulta':
         try:
-            # Puxa os dados direto do Supabase
             resposta = supabase.table("movimentacoes").select("*").eq("usuario_sistema", st.session_state.usuario_logado).order("id", desc=True).execute()
             df_historico = pd.DataFrame(resposta.data)
             
             if not df_historico.empty:
-                # Organiza as colunas e formata a data para ficar bonita na tela
                 df_historico = df_historico[['id', 'data_registro', 'usuario_sistema', 'requisitante', 'cc_saida', 'qtd_saida', 'cargo_saida', 'cc_entrada', 'qtd_entrada', 'cargo_entrada']]
                 df_historico.columns = ["ID", "Data", "Usuário", "Requisitante", "CC Saída", "Qtd Saída", "Cargo Saída", "CC Entrada", "Qtd Entrada", "Cargo Entrada"]
-                
-                # Arruma a data para o formato Brasileiro
                 df_historico['Data'] = pd.to_datetime(df_historico['Data']).dt.strftime('%d/%m/%Y %H:%M')
 
                 total = len(df_historico)
@@ -344,4 +394,4 @@ else:
                 st.info("Você ainda não possui movimentações registradas.")
                 
         except Exception as e:
-            st.error(f"Erro ao conectar com o banco de dados: {e}")
+            st.error(f"Erro ao puxar dados do banco de dados: {e}")
