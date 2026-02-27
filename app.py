@@ -55,7 +55,7 @@ function aplicarEstilos() {
         const txt = btn.innerText.trim();
         if(txt === '✅ CONFIRMAR MOVIMENTAÇÃO') {
             btn.style.backgroundColor = '#2e7d32'; btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
-        } else if(txt === 'Ver Histórico (Consultas)' || txt === 'Nova Movimentação' || txt === 'ACESSAR SISTEMA' || txt === 'ENVIAR SOLICITAÇÃO') {
+        } else if(txt === '📄 Ver Histórico (Consultas)' || txt === 'Nova Movimentação' || txt === 'ACESSAR SISTEMA' || txt === 'ENVIAR SOLICITAÇÃO') {
             btn.style.backgroundColor = '#1976d2'; btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
         } else if(txt === 'Sair') {
             btn.style.backgroundColor = '#d32f2f'; btn.style.color = 'white'; btn.style.border = 'none'; btn.style.fontWeight = 'bold';
@@ -204,7 +204,7 @@ Mensagem automática do Sistema de Headcount.
 
                     # 3. FEEDBACK FINAL
                     if email_sucesso:
-                        st.success("✅ Solicitação salva no Supabase e E-mail enviado com sucesso!")
+                        st.success("✅ Solicitação salva e E-mail enviado com sucesso!")
                         time.sleep(2)
                     else:
                         st.warning(f"⚠️ Salvo no Supabase, mas falhou ao enviar e-mail. ERRO: {erro_real_do_email}")
@@ -272,7 +272,7 @@ else:
     if st.session_state.pagina == 'registro':
         
         if st.session_state.sucesso_movimentacao:
-            st.success("✅ Movimentação registrada com sucesso na nuvem!")
+            st.success("✅ Movimentação registrada com sucesso!")
             st.session_state.sucesso_movimentacao = False 
         
         fk = st.session_state.form_key 
